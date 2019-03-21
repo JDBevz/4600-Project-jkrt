@@ -15,9 +15,10 @@ using namespace std;
 //Implementation of Scanner.h
 
 //Constructor that takes in an ifstream and a symboltable to create and run the scanner. Sets the inputfileptr to the provided ifstream and the symtableptr to the provided symboltable
-Scanner::Scanner(ifstream&in, SymbolTable &sym)
+Scanner::Scanner(ifstream& in, SymbolTable &sym)
 {
 	inputfileptr = &in;
+
 	symtableptr = &sym;
 	errorCount = 0;
 }
@@ -29,12 +30,13 @@ Token* Scanner::getToken()
 {
 
 	Token* tokenToReturn;
+
 	if (inputfileptr->eof())
 	{
 	   Symbol sym = SYM_EOF;
 	   tokenToReturn = new SymToken(sym);
 	   return tokenToReturn;
-		//return nullptr;
+        //return nullptr;
 	}
 
 	char current = (char)inputfileptr->peek();
@@ -45,6 +47,9 @@ Token* Scanner::getToken()
 	{
 		*inputfileptr >> noskipws >> current;
 		laChar = (char)inputfileptr->peek();
+		if(current == '\n'){
+            admin->NewLine();
+		}
 		while (isspace(current))
 		{
 		   if (inputfileptr->eof())
@@ -57,7 +62,7 @@ Token* Scanner::getToken()
 			{
 			   if(inputfileptr->peek() == '\n')
                return nullptr;
-				*inputfileptr >> noskipws >> current;
+				//*inputfileptr >> noskipws >> current;
 			}
 			else
 			{
@@ -173,6 +178,7 @@ Token* Scanner::recognizeName()
 	{
 		sym = BAD_ID;
         t = new NameToken(sym, -1, lexeme);
+        admin->error("Scanner error, BAD_ID");
 		return t;
 	}
 
@@ -184,8 +190,10 @@ Token* Scanner::recognizeName()
 		}
 
 
-		if(t == nullptr)
+		if(t == nullptr){
+                admin->error("Scanner error, BAD_SCAN");
 			return new SymToken(BAD_SCAN);
+		}
 		else{
 			return t;
 		}
@@ -290,6 +298,7 @@ Token* Scanner::recognizeSpecial()
 	else
 	{
 		sym = BAD_SYM;
+		admin->error("Scanner error BAD_SYM");
 	}
 
 	Token* t = new SymToken(sym);
@@ -321,11 +330,14 @@ Token* Scanner::recognizeNumeral()
 	if (!st) {
 		if (resultingNumber == std::numeric_limits<int>::max()) {
 			sym = BAD_NUMERAL;
+			admin->error("Scanner error numeral too big.");
 		}
 		else if (resultingNumber == std::numeric_limits<int>::min()) {
+                admin->error("Scanner error numeral too small");
 			sym = BAD_NUMERAL;
 		}
 		else {
+		    admin->error("Scanner error BAD_NUM");
 			sym = BAD_NUMERAL;
 		}
 	}

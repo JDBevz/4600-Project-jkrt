@@ -47,9 +47,6 @@ using namespace std;
 
 int main(int argc, char* argv[])
 {
-
-    cout << "PARSER TESTING \n";
-
     ifstream ifs;
     ofstream ofs;
 
@@ -65,13 +62,13 @@ int main(int argc, char* argv[])
 
     SymbolTable symtab;
     Scanner sc(ifs, symtab);
-    //Administration compiler(ifs, ofs, sc);
     Parser pa(sc);
+    Administration admin(ifs, ofs, sc, pa);
 
-    if(pa.parse() == 1)
-        cout << "Error in parsing" << endl;
-    else
-        cout << "Parsing completed successfully" << endl;
+    pa.setAdmin(admin);
+    sc.setAdmin(admin);
 
-        return 0;
+    admin.compile();
+
+	return 0;
 }

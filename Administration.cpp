@@ -9,86 +9,119 @@
 
 using namespace std;
 
-Administration::Administration(ifstream& in, ofstream &out, Scanner &sc)
+Administration::Administration(ifstream& in, ofstream &out, Scanner &sc, Parser &pa)
 {
-	outputfileptr = &out;
-	inputfileptr = &in;
-	scannerptr = &sc;
+    outputfileptr = &out;
+    inputfileptr = &in;
+    scannerptr = &sc;
+    parserptr = &pa;
 
-	lineNo = 0;
-	errorCount = 0;
-	string str;
+    lineNo = 0;
+    errorCount = 0;
 };
 
-Administration::~Administration(){}
+Administration::~Administration() {}
+
+
+int Administration::compile()
+{
+    cout << "Starting compilation" << endl;
+    if(inputfileptr->peek() == EOF)
+    {
+        lineNo = 0;
+        return 0;
+    }
+
+    while(inputfileptr->peek() == '\n')
+    {
+        NewLine();
+        inputfileptr->get();
+    }
+
+    int parseStatus = parserptr->parse();
+    lineNo++;
+    cout << "Parsing complete with " << errorCount << " errors, and " << lineNo << " lines " << endl;
+
+    return parseStatus;
+
+}
 
 int Administration::scan()
 {
-   if(inputfileptr->peek() == EOF){lineNo = 0; return 0;}
+    if(inputfileptr->peek() == EOF)
+    {
+        lineNo = 0;
+        return 0;
+    }
 
-   while(inputfileptr->peek() == '\n'){
-      NewLine();
-      inputfileptr->get();
-   }
+    while(inputfileptr->peek() == '\n')
+    {
+        NewLine();
+        inputfileptr->get();
+    }
 
-	Token* tok;
-	int x;
-	while(inputfileptr->good()){
+    Token* tok;
+    int x;
+    while(inputfileptr->good())
+    {
 
-		tok = scannerptr->getToken();
+//        tok = scannerptr->getToken();
 
-		if(tok != nullptr){
-             x = tok->getSymbolName();
+        if(tok != nullptr)
+        {
+            x = tok->getSymbolName();
 
-             if(correctline && x >= 297 && x <= 300){
-                switch(x){
-                    case 297:
-                        error("BAD_NUMERAL");
-                        break;
-                    case 298:
-                        error("BAD_ID");
-                        break;
-                    case 299:
-                        error("BAD_SYM");
-                        break;
-                    case 300: //symbol table full
-                        cout << "\nFATAL ERROR : Symbol table full on line " << ++lineNo << "\n\n";
-                        outputfileptr->close();
-                        return 1;
-                        break;
-                    default:
-                        break;
+			//scanner errors
+            if(correctline && x >= 297 && x <= 300)
+            {
+                switch(x)
+                {
+                case BAD_NUMERAL:
+                case BAD_ID:
+                case BAD_SYM:
+                    error( tok->getTokenString() );
+                    break;
+                case BAD_SCAN: //symbol table full
+                    cout << "\nFATAL ERROR : Symbol table full on line " << ++lineNo << "\n\n";
+                    outputfileptr->close();
+                    return 1;
+                    break;
+                default:
+                    break;
                 }
                 correctline = false;
             }
-                *outputfileptr << *tok << "\n";
-                //delete the token pointer if it is not a name
-                if(tok->getSymbolName()  > 273){
-                    delete tok;
-                }
+            *outputfileptr << *tok << "\n";
+            //delete the token pointer if it is not a name
+            if(tok->getSymbolName()  > 273)
+            {
+                delete tok;
+            }
         }
 
-        while(inputfileptr->peek() == '\n'){
+        while(inputfileptr->peek() == '\n')
+        {
             NewLine();
             inputfileptr->get();
         }
-	}
+    }
 
-    if(errorCount >= MAXERRORS){
-        cout << "Max errors reached. Stopping scanning.\n";
+    if(errorCount >= MAXERRORS)
+    {
+        cout << "Max errors reached. Stopping.\n";
         return 1;
     }
 
+    outputfileptr->close();
 
-
-	outputfileptr->close();
-
-	return 0;
-};
+    return 0;
+}
 
 void Administration::error(string text)
 {
-   string str = text;
-   cout << "On line " << lineNo << " Error: " << str << "\n";
-   errorCount++;
-};
+    if(errorCount < MAXERRORS){
+    cout << "On line " << lineNo << " Error: " << text << "\n";
+    *outputfileptr << "On line " << lineNo << " error : " << text << ".\n";
+    errorCount++;
+    }
+}

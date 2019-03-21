@@ -9,6 +9,9 @@
 #include "Token.h"
 #include "SymbolTable.h"
 #include "Symbol.h"
+#include "Administration.h"
+
+class Administration;
 
 //class to define a scanner. Scans for tokens in an ifstream, then creates and returns tokens.
 class Scanner {
@@ -22,12 +25,17 @@ public:
 	//GetToken, modified to return token* due to turning tokens into an inherited class structure rather than the provided one class with a struct.
 	Token* getToken();
 
+	void setAdmin(Administration &ap){admin = &ap;}
+
 private:
 	//Pointer to the inputfile!
 	std::ifstream *inputfileptr;
 
 	//Pointer to that symboltable!
 	SymbolTable *symtableptr;
+
+	//pointer to admin
+	Administration *admin;
 
 	//Look ahead character
 	char laChar;

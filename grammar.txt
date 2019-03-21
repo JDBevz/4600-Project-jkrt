@@ -1,0 +1,183 @@
+/*
+CFG for PL
+Written in the format that can be checked on http://smlweb.cpsc.ucalgary.ca/ and http://mdaines.github.io/grammophone/
+
+Terminals are written with a lowercase, number, or punctuation at the start
+non terminals start with uppercase letters, and then any legal characters
+Start symbol is the first one written
+Separate right hand side with spaces, terminate with a period
+
+Note : the tool doesn't allow for some punctuation so all punctuation will be written out
+:=	assign
+[	leftBracket
+[	rightBracket
+[]	guard
+(	leftParen
+)	rightParen
+.	period
+$	comment
+=	equal
+<	lessThan
+>	greaterThan
+*	times
+/	divide
++	plus
+-	minus
+\	modulo
+->	arrow
+&	and
+|	or
+~	not
+
+E is used to represent the empty string for easy reading
+comments == /* */
+
+*/
+
+Program -> Block period .
+
+Block -> KW_BEGIN DefinitionPart StatementPart KW_END .
+
+/* DefinitionPart -> { Definition ; } . */
+DefinitionPart -> Definition ; DefinitionPart
+   | E .
+
+Definition -> ConstantDefinition
+   | VariableDefinition
+   | ProcedureDefinition .
+
+ConstantDefinition -> KW_CONST ConstantName SYM_EQUAL Constant .
+
+/*** VariableDefinition -> TypeSymbol VariableList | TypeSymbol KW_ARRAY VariableList SYM_LEFTSQUARE Constant SYM_RIGHTSQUARE . */
+
+VariableDefinition -> TypeSymbol VariableDefinitionA .
+
+VariableDefinitionA -> VariableList
+   | KW_ARRAY VariableList SYM_LEFTSQUARE Constant SYM_RIGHTSQUARE .
+
+
+TypeSymbol -> KW_INTEGER
+   | KW_BOOLEAN .
+
+/* VariableList -> VariableName { , VariableName } . */
+VariableList -> VariableName VariableListA .
+
+VariableListA -> SYM_COMMA VariableList
+| E .
+
+ProcedureDefinition -> KW_PROC ProcedureName Block .
+
+/* StatementPart -> { Statement ; } . */
+StatementPart -> Statement ; StatementPart
+   | E .
+
+Statement -> EmptyStatement
+   | ReadStatement
+   | WriteStatement
+   | AssignmentStatement
+   | ProcedureStatement
+   | IfStatement
+   | DoStatement .
+
+EmptyStatement -> KW_SKIP .
+
+ReadStatement -> KW_READ VariableAccessList .
+
+/* VariableAccessList -> VariableAccess { , VariableAccess } . */
+VariableAccessList -> VariableAccess VariableAccessListA .
+
+VariableAccessListA -> SYM_COMMA VariableList
+   | E .
+
+WriteStatement -> KW_WRITE ExpressionList .
+
+/* ExpressionList -> Expression { , Expression } .  */
+ExpressionList -> Expression ExpressionListA .
+
+ExpressionListA -> SYM_COMMA ExpressionList
+   | E .
+
+AssignmentStatement -> VariableAccessList SYM_ASSIGNMENT ExpressionList.
+
+ProcedureStatement -> KW_CALL ProcedureName .
+
+IfStatement -> KW_IF GuardedCommandList KW_FI .
+
+DoStatement -> KW_DO GuardedCommandList KW_OD .
+
+/* GuardedCommandList -> GuardedCommand { SYM_GUARD GuardedCommand } . */
+GuardedCommandList -> GuardedCommand GuardedCommandListA .
+
+GuardedCommandListA -> SYM_GUARD GuardedCommandList
+   | E .
+
+GuardedCommand -> Expression SYM_RIGHTARROW StatementPart .
+
+/* Expression -> PrimaryExpression { PrimaryOperator PrimaryExpression } . */
+Expression -> PrimaryExpression ExpressionA .
+
+ExpressionA -> PrimaryOperator PrimaryExpression
+   | E .
+
+PrimaryOperator -> SYM_AND
+   | SYM_OR .
+
+/* PrimaryExpression -> SimpleExpression [ RelationalOperator SimpleExpression ] . */
+PrimaryExpression -> SimpleExpression PrimaryExpressionA .
+
+PrimaryExpressionA -> RelationalOperator SimpleExpression
+   | E .
+
+RelationalOperator -> SYM_LESSTHAN
+| SYM_GREATERTHAN
+| SYM_EQUAL .
+
+/* SimpleExpression -> [ minus ] Term { AddingOperator Term } . */
+SimpleExpression -> SYM_MINUS SimpleExpressionA
+   | SimpleExpressionA .
+
+SimpleExpressionA -> Term SimpleExpressionB .
+
+SimpleExpressionB -> AddingOperator SimpleExpressionA
+   | E .
+
+AddingOperator -> SYM_PLUS | SYM_MINUS .
+
+/* Term -> Factor { MultiplyingOperator Factor } . */
+Term -> Factor TermA .
+
+TermA -> MultiplyingOperator Term
+   | E .
+
+MultiplyingOperator -> SYM_MULTIPLY
+   | SYM_DIVIDE
+   | SYM_MODULO .
+
+Factor -> Constant
+   | VariableAccess
+   | SYM_LEFTPAREN Expression SYM_RIGHTPAREN
+   | SYM_NOT Factor .
+
+/* VariableAccess -> VariableName [ IndexedSelector ] . */
+VariableAccess -> VariableName IndexedSelector .
+
+VariableName -> Name .
+
+IndexedSelector -> SYM_LEFTSQUARE Expression SYM_RIGHTSQUARE | E.
+
+Constant -> NUMERAL
+   | BooleanSymbol
+   | ConstantName .
+
+BooleanSymbol -> false | true .
+
+/* These are the things that cause some ambiguity I think. */
+ConstantName -> Name .
+
+ProcedureName -> Name .
+
+/* Name -> Letter { Letter | Digit | SYM_UNDERSCORE } . */
+Name -> Letter NameA .
+NameA -> Letter NameA | Digit NameA | SYM_UNDERSCORE NameA | E .
+
+E -> .

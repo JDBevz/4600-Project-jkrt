@@ -14,7 +14,6 @@ Author : Jesse Bevans
 
 using namespace std;
 
-
 Parser::Parser(Scanner& sc)
 {
 //ctor
@@ -32,6 +31,7 @@ Parser::~Parser()
 
 int Parser::parse()
 {
+
     vector <Symbol> SynchSet;
 
     do
@@ -42,7 +42,7 @@ int Parser::parse()
 
     laSymbol = laToken->getSymbolName();
 
-    cout << "First token : " << laSymbolName() << endl;
+    cout << "First token : " << SymbolTypeString[laSymbol - 256] << endl;
     if(laSymbol == KW_BEGIN)
     {
         addSymbol(SynchSet, SYM_EOF); //end of any possible input
@@ -51,7 +51,7 @@ int Parser::parse()
 
     if(laSymbol != SYM_EOF)
     {
-		Error(__func__, "Expected EOF not found, ignoring remaining input until EOF", SynchSet);
+		Error(__func__, "Expected EOF not found", SynchSet);
     }
 
 	if(laSymbol == SYM_EOF)
@@ -161,7 +161,11 @@ void Parser::DefinitionPart(vector <Symbol> SynchSet)
         else
         {
             Error(__func__, "Missing ';' at end of Definition", SynchSet);
-            DefinitionPart(SynchSet);
+//			if(isMember(SynchSet, laSymbol))
+//			{
+//				cout << SymbolTypeString[laSymbol-256] << " in " << __func__ << " synch set." << endl;
+//				DefinitionPart(SynchSet);
+//			}
         }
         break;
     //empty definition part / follow set
@@ -175,14 +179,8 @@ void Parser::DefinitionPart(vector <Symbol> SynchSet)
     case KW_END:
 	case SYM_EOF:
         return;
-	case SYM_SEMICOLON:
-		Error(__func__, "Blank statement", SynchSet);
 	//any unexpected or incorrect symbols
     default:
-        if(panic)
-        {
-            return;
-        }
         Error(__func__, "Unexpected symbol", SynchSet);
         DefinitionPart(SynchSet);
     }
@@ -228,6 +226,11 @@ void Parser::StatementPart(vector <Symbol> SynchSet)
         else
         {
             Error(__func__, "Missing ';' at end of Statement", SynchSet);
+			if(isMember(SynchSet, laSymbol))
+			{
+				cout << SymbolTypeString[laSymbol-256] << " in " << __func__ << " synch set." << endl;
+				StatementPart(SynchSet);
+			}
         }
         break;
 	//follow set
@@ -235,7 +238,6 @@ void Parser::StatementPart(vector <Symbol> SynchSet)
     case KW_FI:
     case KW_OD:
     case KW_END:
-	case SYM_EOF:
         return;
 	case SYM_SEMICOLON:
 		Error(__func__, "Blank statement", SynchSet);
@@ -243,11 +245,12 @@ void Parser::StatementPart(vector <Symbol> SynchSet)
 		break;
 	//unexpected symbols
     default:
-        if(panic)
-        {
-            return;
-        }
         Error(__func__, "Unexpected symbol", SynchSet);
+        if(isMember(SynchSet, laSymbol))
+        {
+            cout << SymbolTypeString[laSymbol-256] << " in " << __func__ << " synch set." << endl;
+            StatementPart(SynchSet);
+        }
     }
 
 }
@@ -285,14 +288,7 @@ void Parser::ConstantDefinition(vector <Symbol> SynchSet)
 {
     cout << "ConstantDefinition\n";
 
-    bool isGood = true;
-
     addSymbol(SynchSet, SYM_SEMICOLON);
-    addSymbol(SynchSet, ID);
-    addSymbol(SynchSet, SYM_EQUAL);
-    addSymbol(SynchSet, NUMERAL);
-    addSymbol(SynchSet, KW_TRUE);
-    addSymbol(SynchSet, KW_FALSE);
 
 //const
     if(laSymbol == KW_CONST)
@@ -300,9 +296,8 @@ void Parser::ConstantDefinition(vector <Symbol> SynchSet)
         match(laSymbol, __func__);
     }
     else
-    {	//this would be a very difficult error to encounter
-    	if(isGood)
-			{Error(__func__, "Missing 'const'", SynchSet); isGood = false;}
+    {
+        Error(__func__, "Missing 'const'", SynchSet);
     }
 //const name
     if(laSymbol == ID)
@@ -311,8 +306,7 @@ void Parser::ConstantDefinition(vector <Symbol> SynchSet)
     }
     else
     {
-    	if(isGood)
-			{Error(__func__, "Missing constant name", SynchSet); isGood = false;}
+        Error(__func__, "Missing ID", SynchSet);
     }
 
 //equals
@@ -322,8 +316,7 @@ void Parser::ConstantDefinition(vector <Symbol> SynchSet)
     }
     else
     {
-    	if(isGood)
-			{Error(__func__, "Missing '='", SynchSet); isGood = false;}
+        Error(__func__, "Missing '='", SynchSet);
     }
 
 //constant
@@ -336,8 +329,7 @@ void Parser::ConstantDefinition(vector <Symbol> SynchSet)
         Constant(SynchSet);
         break;
     default:
-    	if(isGood)
-			{Error(__func__, "Missing constant", SynchSet); isGood = false;}
+        Error(__func__, "Missing constant", SynchSet);
     }
 
 }
@@ -369,7 +361,7 @@ void Parser::VariableDefinition(vector <Symbol> SynchSet)
     }
     else
     {
-        Error(__func__, "Incorrect variable definition", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 }
@@ -633,7 +625,7 @@ void Parser::AssignmentStatement(vector <Symbol> SynchSet)
     }
     else
     {
-        Error(__func__, "expected ':=' in assignment statement", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 //Expression - ( ~ false true number letter
@@ -648,7 +640,7 @@ void Parser::AssignmentStatement(vector <Symbol> SynchSet)
         ExpressionList(SynchSet);
         break;
     default:
-        Error(__func__, "Error in assignment statement list", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 
@@ -751,7 +743,7 @@ void Parser::VariableAccessList(vector <Symbol> SynchSet)
     }
     else
     {
-        Error(__func__, "Unexpected symbol", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 
@@ -771,9 +763,10 @@ void Parser::VariableAccessListA(vector <Symbol> SynchSet)
         VariableAccessList(SynchSet);
         break;
     case SYM_ASSIGNMENT:
+    case SYM_SEMICOLON:
         return;
     default:
-        Error(__func__, "expected ',' or ':='", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 }
@@ -810,7 +803,7 @@ void Parser::ExpressionList(vector <Symbol> SynchSet)
         ExpressionListA(SynchSet);
         break;
     default:
-        Error(__func__, "Expected expression", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 }
@@ -830,7 +823,7 @@ void Parser::ExpressionListA(vector <Symbol> SynchSet)
     case SYM_SEMICOLON:
         return;
     default:
-        Error(__func__, "Expected ',' or ';'", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 }
@@ -855,12 +848,12 @@ void Parser::GuardedCommand(vector <Symbol> SynchSet)
         }
         else
         {
-            Error(__func__, "Expected '->'", SynchSet);
+            Error(__func__, "", SynchSet);
             return;
         }
         break;
     default:
-        Error(__func__, "Unexpected symbol", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
         break;
     }
@@ -873,7 +866,7 @@ void Parser::GuardedCommmandList(vector <Symbol> SynchSet)
     cout << "GuardedCommandList \n";
 
     GuardedCommand(SynchSet);
-
+///
     switch(laSymbol)
     {
     case SYM_GUARD:
@@ -883,7 +876,7 @@ void Parser::GuardedCommmandList(vector <Symbol> SynchSet)
     case KW_OD:
         return;
     default:
-        Error(__func__, "Expected end of statement or '[]'", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 
@@ -905,7 +898,7 @@ void Parser::GuardedCommmandListA(vector <Symbol> SynchSet)
     case KW_OD:
         return;
     default:
-        Error(__func__, "Expected end of statement or '[]'", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 }
@@ -929,7 +922,7 @@ void Parser::Expression(vector <Symbol> SynchSet)
         ExpressionA(SynchSet);
         break;
     default:
-        Error(__func__, "Bad expression", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
         break;
     }
@@ -955,7 +948,7 @@ void Parser::ExpressionA(vector <Symbol> SynchSet)
     case SYM_SEMICOLON:
         return;
     default:
-        Error(__func__, "Expected primary expression or expression", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 }
@@ -972,7 +965,7 @@ void Parser::PrimaryOperator(vector <Symbol> SynchSet)
         match(laSymbol, __func__);
         break;
     default:
-        Error(__func__, "Expected '^' or '|'", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 }
@@ -1044,7 +1037,7 @@ void Parser::RelationalOperator(vector <Symbol> SynchSet)
         match(laSymbol, __func__);
         break;
     default:
-        Error(__func__, "Expected '<' , '>' , '='", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
         break;
     }
@@ -1216,10 +1209,8 @@ void Parser::Factor(vector <Symbol> SynchSet)
     case KW_TRUE:
     case KW_FALSE:
 ///case ID: ///AMBIGUITY ALERT !!!! For now we will send it down the variable access path
-///if ID type == constant
         Constant(SynchSet);
         break;
-///if ID type == variable
     case ID:
         VariableAccess(SynchSet);
         break;
@@ -1230,7 +1221,7 @@ void Parser::Factor(vector <Symbol> SynchSet)
             match(laSymbol, __func__);
         else
         {
-            Error(__func__, "Missing ')'", SynchSet);
+            Error(__func__, "", SynchSet);
             return;
         }
         break;
@@ -1238,8 +1229,7 @@ void Parser::Factor(vector <Symbol> SynchSet)
         match(laSymbol, __func__);
         Factor(SynchSet);
         break;
-    default:
-        Error(__func__, "", SynchSet);
+
     }
 }
 
@@ -1257,7 +1247,7 @@ void Parser::MultiplyingOperator(vector <Symbol> SynchSet)
         match(laSymbol, __func__);
         break;
     default:
-        Error(__func__, "Expected '*' , '/' , or '\'", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 }
@@ -1279,28 +1269,29 @@ void Parser::IndexedSelector(vector <Symbol> SynchSet)
         }
         else
         {
-            Error(__func__, "Missing closing bracket", SynchSet);
+            Error(__func__, "", SynchSet);
             return;
         }
         break;
-//    case SYM_MULTIPLY:
-//    case SYM_MODULO:
-//    case SYM_DIVIDE:
-//    case SYM_PLUS:
-//    case SYM_MINUS:
-//    case SYM_LESSTHAN:
-//    case SYM_GREATERTHAN:
-//    case SYM_EQUAL:
-//    case SYM_AND:
-//    case SYM_OR:
-//    case SYM_RIGHTARROW:
-//    case SYM_ASSIGNMENT:
-//    case SYM_RIGHTPAREN:
-//    case SYM_RIGHTSQUARE:
-//    case SYM_COMMA:
-//    case SYM_SEMICOLON:
-//        return;
+    case SYM_MULTIPLY:
+    case SYM_MODULO:
+    case SYM_DIVIDE:
+    case SYM_PLUS:
+    case SYM_MINUS:
+    case SYM_LESSTHAN:
+    case SYM_GREATERTHAN:
+    case SYM_EQUAL:
+    case SYM_AND:
+    case SYM_OR:
+    case SYM_RIGHTARROW:
+    case SYM_ASSIGNMENT:
+    case SYM_RIGHTPAREN:
+    case SYM_RIGHTSQUARE:
+    case SYM_COMMA:
+    case SYM_SEMICOLON:
+        return;
     default:
+        Error(__func__, "", SynchSet);
         return;
         break;
     }
@@ -1324,7 +1315,7 @@ void Parser::Constant(vector <Symbol> SynchSet)
         ConstantName(SynchSet);
         break;
     default:
-        Error(__func__, "Expected constant", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
         break;
     }
@@ -1343,7 +1334,7 @@ void Parser::BooleanSymbol(vector <Symbol> SynchSet)
         match(laSymbol, __func__);
         break;
     default:
-        Error(__func__, "Expected 'true' or 'false'", SynchSet);
+        Error(__func__, "", SynchSet);
         return;
     }
 }
@@ -1354,12 +1345,11 @@ void Parser::Numeral(vector <Symbol> SynchSet)
 {
     cout << "Numeral \n";
     if(laSymbol == NUMERAL)
-    {
         match(laSymbol, __func__);
-    }
     else
     {
-        Error(__func__, "Numeral error", SynchSet);
+        Error(__func__, "", SynchSet);
+        return;
     }
 }
 
@@ -1372,10 +1362,6 @@ void Parser::VariableName(vector <Symbol> SynchSet)
     {
         match(laSymbol, __func__);
     }
-    else
-    {
-        Error(__func__, "Variable name error", SynchSet);
-    }
 }
 
 //first set : letter
@@ -1386,10 +1372,6 @@ void Parser::ConstantName(vector <Symbol> SynchSet)
     if(laSymbol == ID)
     {
         match(laSymbol, __func__);
-    }
-    else
-    {
-        Error(__func__, "Constant name error", SynchSet);
     }
 }
 
@@ -1402,10 +1384,6 @@ void Parser::ProcedureName(vector <Symbol> SynchSet)
     {
         match(laSymbol, __func__);
     }
-    else
-    {
-        Error(__func__, "Procedure name error", SynchSet);
-    }
 }
 
 //first set : letter
@@ -1417,37 +1395,52 @@ void Parser::Name(vector <Symbol> SynchSet)
     {
         match(laSymbol, __func__);
     }
-    else
-    {
-        Error(__func__, "Name error", SynchSet);
-    }
 }
 
-void Parser::Error(const char funcname[], string errMessage, vector<Symbol> &SynchSet)
+void Parser::Error(const char funcname[], string errMessage, vector<Symbol> &synchSet)
 {
 	if(!panic)
 	{
 		panic = true;
-		cout << "\nBegin error recovery.\n";
+		cout << "\nBegin panic mode error recovery.\n";
 		errorCount++;
-
-		admin->error(errMessage + " : " + laSymbolName() + " in " + funcname);
-
-		//cout << "Error " << errMessage << " : " << laSymbolName() << " in " << funcname << ".\n\n";
 	}
-		//get a new symbol while
-		while(!isMember(SynchSet, laSymbol))
+		cout << "Error " << errMessage << " : " << SymbolTypeString[laSymbol-256] << " found in " << funcname << ".\n\n";
+
+		//if we see an error symbol, get rid of it and get the next token.
+		while(!isMember(synchSet, laSymbol))
 		{
-			//cout << "getting new token in error\n";
-			getNextToken();
+			cout << "getting new token in error\n";
+			laToken = scptr->getToken();
+			laSymbol = laToken->getSymbolName();
 		};
 
+}
+
+void Parser::match(Symbol sym)
+{
+
+    cout << "match terminal : " << SymbolTypeString[sym - 256] << endl;
+//    --panicCount;
+	if(panic)//panicCount == 0)
+    {
+        cout << "Error recovered.\n\n";
+		panic = false;
+    }
+
+    do
+    {
+        laToken = scptr->getToken();
+    }
+    while(laToken == nullptr);
+	laSymbol = laToken->getSymbolName();
+    cout << "Got new token : " << SymbolTypeString[laSymbol - 256] << endl;
 }
 
 void Parser::match(Symbol sym, const char funcname[])
 {
 
-    cout << "match terminal : " << laSymbolName() << " in " << funcname << endl;
+    cout << "match terminal : " << SymbolTypeString[sym - 256] << " in " << funcname << endl;
 //    --panicCount;
 	if(panic)//panicCount == 0)
     {
@@ -1455,13 +1448,15 @@ void Parser::match(Symbol sym, const char funcname[])
 		panic = false;
     }
 
-	getNextToken();
-    cout << "Got new token : " << laSymbolName() << endl;
+    do
+    {
+        laToken = scptr->getToken();
+    }
+    while(laToken == nullptr);
+    laSymbol = laToken->getSymbolName();
 
+    cout << "Got new token : " << SymbolTypeString[laSymbol - 256] << endl;
 }
-
-
-//helper funtions
 
 void Parser::addSymbol(vector<Symbol> &symSet, Symbol sym)
 {
@@ -1482,34 +1477,5 @@ bool Parser::isMember(vector<Symbol> &checkset, Symbol sym)
     {
         return false;
     }
-
-}
-
-string Parser::laSymbolName()
-{
-	return laToken->getTokenString();
-}
-
-void Parser::getNextToken()
-{
-	do
-    {
-        laToken = scptr->getToken();
-    }
-    while(laToken == nullptr);
-    laSymbol = laToken->getSymbolName();
-
-	switch(laSymbol)
-	{
-	//these are all scanning errors, so they should be reported by the scanner and just ignored here.
-	case BAD_SCAN:
-	case BAD_SYM:
-	case BAD_ID:
-	case BAD_NUMERAL:
-		cout << "scanner error : " << laSymbolName() << endl;
-		getNextToken();
-	default:
-		break;
-	}
 
 }

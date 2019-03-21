@@ -35,6 +35,12 @@ comments == /* */
 */
 
 Program -> Block period .
+	first set : begin
+	follow set : EMPTY
+	stop set :
+
+
+
 Block -> begin DefinitionPart StatementPart end .
 
 /* DefinitionPart -> { Definition ; } . */
@@ -50,7 +56,7 @@ VariableDefinitionA -> VariableList | array VariableList leftBracket Constant ri
 
 TypeSymbol -> integer | boolean .
 
-/* VariableList -> VariableName { , VariableName } . */ 
+/* VariableList -> VariableName { , VariableName } . */
 VariableList -> VariableName VariableListA .
 VariableListA -> comma VariableList | E .
 
@@ -65,7 +71,7 @@ ReadStatement -> read VariableAccessList .
 
 /* VariableAccessList -> VariableAccess { , VariableAccess } . */
 VariableAccessList -> VariableAccess VariableAccessListA .
-VariableAccessListA -> comma VariableList | E .
+VariableAccessListA -> comma VariableAccessList | E .
 
 WriteStatement -> write ExpressionList .
 
@@ -86,7 +92,7 @@ GuardedCommand -> Expression arrow StatementPart .
 
 /* Expression -> PrimaryExpression { PrimaryOperator PrimaryExpression } . */
 Expression -> PrimaryExpression ExpressionA .
-ExpressionA -> PrimaryOperator PrimaryExpression | E . 
+ExpressionA -> PrimaryOperator PrimaryExpression | E .
 
 PrimaryOperator -> and | or .
 
@@ -107,7 +113,7 @@ AddingOperator -> plus | minus .
 Term -> Factor TermA .
 TermA -> MultiplyingOperator Term | E .
 
-MultiplyingOperator -> times | divide | modulo . 
+MultiplyingOperator -> times | divide | modulo .
 Factor -> Constant | VariableAccess | leftParen Expression rightParen | not Factor .
 
 /* VariableAccess -> VariableName [ IndexedSelector ] . */
@@ -123,15 +129,12 @@ NumeralA -> Numeral | E .
 
 BooleanSymbol -> false | true .
 
-/* These are the things that cause some ambiguity I think. */
+/* These are the things that cause some ambiguity. */
 ConstantName -> Name .
 VariableName -> Name .
 ProcedureName -> Name .
 
 /* Name -> Letter { Letter | Digit | underscore } . */
-Name -> Letter NameA .
-NameA -> Letter NameA | Digit NameA | underscore NameA | E . 
-
+Name -> name .
 Digit -> number .
-Letter -> letter .
 E -> .
