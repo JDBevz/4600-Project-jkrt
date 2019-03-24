@@ -11,45 +11,8 @@
 
 using namespace std;
 
-//int main(int argc, char* argv[]){
-//   cout << "Welcome to Our 4600 compiler!\n";
-//
-//   ifstream ifs;
-//   ofstream ofs;
-//
-//   if(argc != 3){
-//    cout << "Correct usage : ./plc inputFile outputFile \nExiting\n.";
-//    return 0;
-//   }
-//
-//   cout << "input from : " << argv[1] << "  output to : " << argv[2] << "\n";
-//
-//   ofs.open(argv[2], ofstream::out);
-//
-//   ifs.open(argv[1], ifstream::in);
-//
-//   SymbolTable symtab;
-//
-//   Scanner sc(ifs, symtab);
-//
-//   Administration compiler(ifs, ofs, sc);
-//
-//   if(compiler.scan() != 0){
-//	cout << "\nScanning error, exiting.\n";
-//   }
-//
-//   cout << "Total Line count " << compiler.getLinecount() << '\n';
-//
-//   cout << "done scanning\n";
-//
-//return 0;
-//}
-
 int main(int argc, char* argv[])
 {
-
-    cout << "PARSER TESTING \n";
-
     ifstream ifs;
     ofstream ofs;
 
@@ -65,15 +28,14 @@ int main(int argc, char* argv[])
 
     SymbolTable symtab;
     Scanner sc(ifs, symtab);
-    //Administration compiler(ifs, ofs, sc);
     Parser pa(sc);
-    int parsecount;
-    parsecount = pa.parse();
+    Administration admin(ifs, ofs, sc, pa);
 
-    if(parsecount > 0)
-        cout << parsecount << " error(s) in parsing" << endl;
-    else
-        cout << "Parsing completed successfully" << endl;
+    pa.setAdmin(admin);
+    sc.setAdmin(admin);
 
-        return 0;
+    admin.compile();
+
+    cout << "\n\nDONE";
+	return 0;
 }

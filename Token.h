@@ -15,7 +15,9 @@ public:
 
 	//name Getter
 	Symbol getSymbolName() const;
-	
+
+	std::string getTokenString() const;
+
 	//name Setter
 	void setSymbolName(Symbol snts);
 
@@ -27,6 +29,56 @@ public:
 private:
 	//Enumerator Symbol type, terminal symbol name
 	Symbol sname;
+
+	char SymbolTypeString[47][20] = {
+	"ID",
+	"KW_BEGIN",
+	"KW_END",
+	"KW_CONST",
+	"KW_ARRAY",
+	"KW_INTEGER",
+	"KW_BOOLEAN",
+	"KW_PROC",
+	"KW_SKIP",
+	"KW_READ",
+	"KW_WRITE",
+	"KW_CALL",
+	"KW_IF",
+	"KW_DO",
+	"KW_FI",
+	"KW_OD",
+	"KW_FALSE",
+	"KW_TRUE",
+	"NUMERAL",
+	"SYM_PERIOD",
+	"SYM_COMMA",
+	"SYM_SEMICOLON",
+	"SYM_RIGHTSQUARE",
+	"SYM_LEFTSQUARE",
+	"SYM_AND",
+	"SYM_OR",
+	"SYM_NOT",
+	"SYM_LESSTHAN",
+	"SYM_EQUAL",
+	"SYM_GREATERTHAN",
+	"SYM_PLUS",
+	"SYM_MINUS",
+	"SYM_MULTIPLY",
+	"SYM_DIVIDE",
+	"SYM_MODULO",
+	"SYM_RIGHTBRACKET",
+	"SYM_LEFTBRACKET",
+	"SYM_ASSIGNMENT",
+	"SYM_GUARD",
+	"SYM_RIGHTARROW",
+	"SYM_COMMENT",
+	"BAD_NUMERAL",
+	"BAD_ID",
+	"BAD_SYM",
+	"BAD_SCAN",
+	"NONAME",
+	"EOF"
+	};
 };
 
 

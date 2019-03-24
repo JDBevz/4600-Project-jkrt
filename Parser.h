@@ -3,135 +3,105 @@
 
 #include "Symbol.h"
 #include "Scanner.h"
+#include "Administration.h"
+#include "TypeKindEnum.h"
+#include "BlockTable.h"
+class Administration;
+class Scanner;
 
 class Parser
 {
 public:
-    Parser(Scanner& scanner);
+    Parser(Scanner &sp);
     virtual ~Parser();
     int parse();
+    void setAdmin(Administration &ap){admin = &ap;}
 
 protected:
 
 private:
 
-    int errcount;
-    bool errflag;
-
-    void Program(); //start symbol
-    void Block();
-    void DefinitionPart();
-    void StatementPart();
-    void Definition();
-    void ConstantDefinition();
-    void VariableDefinition();
-    void VariableDefinitionA();
-    void TypeSymbol();
-    void VariableList();
-    void VariableListA();
-    void ProcedureDefinition();
-    void Statement();
-    void EmptyStatement();
-    void ReadStatement();
-    void WriteStatement();
-    void AssignmentStatement();
-    void ProcedureStatement();
-    void IfStatement();
-    void DoStatement();
-    void VariableAccessList();
-    void VariableAccessListA();
-    void VariableAccess();
-    void ExpressionList();
-    void ExpressionListA();
-    void GuardedCommand();
-    void GuardedCommandList();
-    void GuardedCommandListA();
-    void Expression();
-    void ExpressionA();
-    void PrimaryOperator();
-    void PrimaryExpression();
-    void PrimaryExpressionA();
-    void RelationalOperator();
-    void SimpleExpression();
-    void SimpleExpressionA();
-    void SimpleExpressionB();
-    void AddingOperator();
-    void Term();
-    void TermA();
-    void Factor();
-    void MultiplyingOperator();
-    void VariableName();
-    void VariableNameA();
-    void IndexedSelector();
-    void Constant();
-    void BooleanSymbol();
-    void Numeral();
-    void NumeralA();
-    void ConstantName();
-    void ProcedureName();
-    void Name();
-
+    void Program(vector <Symbol> SynchSet); //start symbol
+    void Block(vector <Symbol> SynchSet);
+    void DefinitionPart(vector <Symbol> SynchSet);
+    void StatementPart(vector <Symbol> SynchSet);
+    void Definition(vector <Symbol> SynchSet);
+    void ConstantDefinition(vector <Symbol> SynchSet);
+    void VariableDefinition(vector <Symbol> SynchSet);
+    void VariableDefinitionA(vector <Symbol> SynchSet, myType TempType);
+    myType TypeSymbol(vector <Symbol> SynchSet);
+    vector<int> VariableList(vector <Symbol> SynchSet);
+    vector<int> VariableListA(vector <Symbol> SynchSet);
+    void ProcedureDefinition(vector <Symbol> SynchSet);
+    void Statement(vector <Symbol> SynchSet);
+    void EmptyStatement(vector <Symbol> SynchSet);
+    void ReadStatement(vector <Symbol> SynchSet);
+    void WriteStatement(vector <Symbol> SynchSet);
+    void AssignmentStatement(vector <Symbol> SynchSet);
+    void ProcedureStatement(vector <Symbol> SynchSet);
+    void IfStatement(vector <Symbol> SynchSet);
+    void DoStatement(vector <Symbol> SynchSet);
+    vector<myType> VariableAccessList(vector <Symbol> SynchSet);
+    vector<myType> VariableAccessListA(vector <Symbol> SynchSet);
+    myType VariableAccess(vector <Symbol> SynchSet);
+    vector<myType> ExpressionList(vector <Symbol> SynchSet);
+    vector<myType> ExpressionListA(vector <Symbol> SynchSet);
+    void GuardedCommand(vector <Symbol> SynchSet);
+    void GuardedCommmandList(vector <Symbol> SynchSet);
+    void GuardedCommmandListA(vector <Symbol> SynchSet);
+    myType Expression(vector <Symbol> SynchSet);
+    vector<myType> ExpressionA(vector <Symbol> SynchSet);
+    void PrimaryOperator(vector <Symbol> SynchSet);
+    myType PrimaryExpression(vector <Symbol> SynchSet);
+    vector<myType> PrimaryExpressionA(vector <Symbol> SynchSet);
+    void RelationalOperator(vector <Symbol> SynchSet);
+    myType SimpleExpression(vector <Symbol> SynchSet);
+    myType SimpleExpressionA(vector <Symbol> SynchSet);
+    vector<myType> SimpleExpressionB(vector <Symbol> SynchSet);
+    void AddingOperator(vector <Symbol> SynchSet);
+    myType Term(vector <Symbol> SynchSet);
+    vector<myType> TermA(vector <Symbol> SynchSet);
+    myType Factor(vector <Symbol> SynchSet);
+    void MultiplyingOperator(vector <Symbol> SynchSet);
+    void VariableName(vector <Symbol> SynchSet);
+    void VariableNameA(vector <Symbol> SynchSet);
+    int IndexedSelector(vector <Symbol> SynchSet);
+    void Constant(vector <Symbol> SynchSet);
+    void BooleanSymbol(vector <Symbol> SynchSet);
+    void Numeral(vector <Symbol> SynchSet);
+    void NumeralA(vector <Symbol> SynchSet);
+    void ConstantName(vector <Symbol> SynchSet);
+    int ProcedureName(vector <Symbol> SynchSet);
+    void Name(vector <Symbol> SynchSet);
 
     void Error();
-    void Error(const char *funcname, Symbol seen);
+    void Error(const char funcName[], Symbol expected);
+    void Error(const char funcName[], string errMessage);
+    void Error(const char funcName[], string errMessage, vector<Symbol> &synchSet);
+
 
     void match(Symbol sym);
+    void match(Symbol sym, const char funcname[]);
 
+    void addSymbol(vector<Symbol> &symSet, Symbol sym);
 
-    Token *laToken, *currToken;
+	//checks for symbol membership in a given set. Used for checking synchsets
+    bool isMember(vector<Symbol> &checkset, Symbol sym);
 
-    Scanner* scptr;
+	void getNextToken();
+	string laSymbolName();
 
-    char SymbolTypeString[47][20] =
-    {
-        "ID",
-        "KW_BEGIN",
-        "KW_END",
-        "KW_CONST",
-        "KW_ARRAY",
-        "KW_INTEGER",
-        "KW_BOOLEAN",
-        "KW_PROC",
-        "KW_SKIP",
-        "KW_READ",
-        "KW_WRITE",
-        "KW_CALL",
-        "KW_IF",
-        "KW_DO",
-        "KW_FI",
-        "KW_OD",
-        "KW_FALSE",
-        "KW_TRUE",
-        "NUMERAL",
-        "SYM_PERIOD",
-        "SYM_COMMA",
-        "SYM_SEMICOLON",
-        "SYM_RIGHTSQUARE",
-        "SYM_LEFTSQUARE",
-        "SYM_AND",
-        "SYM_OR",
-        "SYM_NOT",
-        "SYM_LESSTHAN",
-        "SYM_EQUAL",
-        "SYM_GREATERTHAN",
-        "SYM_PLUS",
-        "SYM_MINUS",
-        "SYM_MULTIPLY",
-        "SYM_DIVIDE",
-        "SYM_MODULO",
-        "SYM_RIGHTPAREN",
-        "SYM_LEFTPAREN",
-        "SYM_ASSIGNMENT",
-        "SYM_GUARD",
-        "SYM_RIGHTARROW",
-        "SYM_COMMENT",
-        "BAD_NUMERAL",
-        "BAD_ID",
-        "BAD_SYM",
-        "BAD_SCAN",
-        "NONAME",
-        "EOF"
-    };
+    Token *laToken;
+
+    Symbol laSymbol;
+
+    Scanner *scptr;
+
+	Administration *admin;
+
+    bool panic;
+    int panicCount, errorCount;
+    BlockTable bt;
 };
 
 #endif // PARSER_H

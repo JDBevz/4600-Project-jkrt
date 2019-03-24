@@ -1,6 +1,3 @@
-
-
-
 //Admin class is concerned with providing services as error reporting,
 //and for the overall admin of the scanner;
 //its role will change a new phases are added
@@ -11,20 +8,26 @@
 #include <iostream>
 #include <fstream>
 #include "Scanner.h"
+#include "Parser.h"
+
 //this is the max number of errors before the compiler bails out
 #define MAXERRORS 10
 
-//each phase has its kind of errors
-//enum errorkind{ScanE,ParseE,ScopeE,TypeE};
-
 using namespace std;
+
+class Scanner;
+class Parser;
 
 class Administration
 {
   public:
 
 	//set up input and output files for scanning
-	Administration(ifstream& in, ofstream &out, Scanner &sc);
+//    Administration(ifstream& in, ofstream& out);
+
+//	Administration(ifstream& in, ofstream &out, Scanner &sc);
+//
+	Administration(ifstream& in, ofstream &out, Scanner &sc, Parser &pa);
 
 	//destructor
 	~Administration();
@@ -33,10 +36,14 @@ class Administration
 	void NewLine(){lineNo++; correctline = true;}
 
 	//Error function for the phases
-	void error(string text);
+	void error(string text, int typeFlag);
 
-	//call scanner from here
+	//call only the scanner from here
 	int scan();
+	//call only the parser
+	int parse();
+	//call all functions
+	int compile();
 
 	int getLinecount(){return lineNo;};
 
@@ -50,6 +57,8 @@ class Administration
 	//scanner
 	Scanner *scannerptr;
 
+	Parser *parserptr;
+
 	//maintain the current line number
 	int lineNo;
 
@@ -59,6 +68,5 @@ class Administration
 	//count the number of errors
 	int errorCount;
 
-	enum errorkind {ScanE,ParseE,ScopeE,TypeE};
 };
 #endif

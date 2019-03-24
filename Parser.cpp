@@ -1,192 +1,180 @@
 /****
 
+Parser with improved function and error detection and recovery.
+
 Author : Jesse Bevans, Kevin Watchuk
 
-TODO : simplify logic : don't need to check that the symbol matches after entering a statement
-    they should only be able to reach some statements if that symbol is already the lookahead, so double checking is redundant (but good for making sure we are correct in the first pass)
-
-    Can also make actual 'first sets' for each function and match to that list to check whether we should go to that function or there is an error
-    currently it is hard coded at each selection point instead of using a membership check
 ****/
 
 
-
+#include <algorithm>
+#include <vector>
 #include "Parser.h"
 #include <iostream>
+#include "NumberToken.h"
+
 
 using namespace std;
 
+
 Parser::Parser(Scanner& sc)
 {
-    //ctor
+//ctor
     scptr = &sc;
     laToken = nullptr;
-    errcount = 0;
+    panic = false;
+    panicCount = 0;
+    errorCount = 0;
+    bt=BlockTable();
 }
 
 Parser::~Parser()
 {
-    //dtor
+//dtor
 }
 
 int Parser::parse()
 {
+    vector <Symbol> SynchSet;
 
-    while(laToken == nullptr)
+    do
     {
         laToken = scptr->getToken();
     }
-    cout << "First token : " << SymbolTypeString[laToken->getSymbolName() - 256] << endl;
-    if(laToken->getSymbolName() == KW_BEGIN)
+    while(laToken == nullptr);
+
+    laSymbol = laToken->getSymbolName();
+
+    //cout << "First token : " << laSymbolName() << endl;
+    if(laSymbol == KW_BEGIN)
     {
-        Program();
-    }
-    else if(laToken->getSymbolName() == SYM_EOF)
-    {
-        cout << "EOF\n";
-        return errcount;
+        addSymbol(SynchSet, SYM_EOF); //end of any possible input
+        Program(SynchSet);
     }
 
-    while(laToken->getSymbolName() != SYM_EOF)
+    if(laSymbol != SYM_EOF)
     {
-        if(laToken->getSymbolName() == SYM_EOF)
-        {
-            return errcount;
-        }
-        Error();
+		Error(__func__, "Expected EOF not found, ignoring remaining input until EOF", SynchSet);
     }
 
+	if(laSymbol == SYM_EOF)
+	{
+		cout << "EOF reached.\n";
+        return errorCount;
+	}
+
+    return -1;
 }
 
 //first set :  begin
 //follow set :  E
-void Parser::Program()
+//synch set : .
+void Parser::Program(vector <Symbol> SynchSet)
 {
     cout << "Program\n";
 
-    if(laToken->getSymbolName() == KW_BEGIN)
+    //
+    if(laSymbol != KW_BEGIN)
     {
-        Block();
+        Error(__func__, "Missing 'begin' at start of program", SynchSet);
+    }
+
+    if(!(bt.newBlock()))
+    {
+        admin->error("fatal error", 1);
+    }
+
+    Block(SynchSet);
+
+    bt.endBlock();
+    if(laSymbol == SYM_PERIOD)
+    {
+        match(laSymbol, __func__);
     }
     else
     {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-            return;
-        default:
-
-            Error(__func__, laToken->getSymbolName());
-            Program();
-        }
-
-
+        Error(__func__, "Missing '.' at end of program", SynchSet);
     }
 
-    if(laToken->getSymbolName() == SYM_PERIOD)
-        match(laToken->getSymbolName());
-    else
-    {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            Program();
-        }
-    }
 }
 
 //first set :  begin
 //follow set :  ; .
-void Parser::Block()
+void Parser::Block(vector <Symbol> SynchSet)
 {
     cout << "Block\n";
-    if(laToken->getSymbolName() == KW_BEGIN)
+
+    //add follow set to synch set
+    addSymbol(SynchSet, SYM_PERIOD);
+    addSymbol(SynchSet, SYM_SEMICOLON);
+
+    if(laSymbol == KW_BEGIN)
     {
-        match(laToken->getSymbolName());
-
-        //match definition part
-        switch(laToken->getSymbolName())
-        {
-        case KW_CONST:
-        case KW_PROC:
-        case KW_INTEGER:
-        case KW_BOOLEAN:
-            DefinitionPart();
-            break;
-        default:
-            break;
-        }
-        //match statement part
-        switch(laToken->getSymbolName())
-        {
-        case KW_SKIP:
-        case KW_READ:
-        case KW_WRITE:
-        case KW_CALL:
-        case KW_IF:
-        case KW_DO:
-        case ID:
-            StatementPart();
-            break;
-        default:
-            break;
-        }
-
-        //match end
-        if(laToken->getSymbolName() == KW_END)
-        {
-            match(laToken->getSymbolName());
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            //case SYM_SEMICOLON :
-            case SYM_PERIOD :
-                cout << laToken->getSymbolName() << " is in the stopset of " << __func__ << " returning up a level.";
-                return;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                Block();
-
-            }
-        }
+        match(laSymbol, __func__);
     }
     else
     {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        //case SYM_SEMICOLON :
-        case SYM_PERIOD :
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            Block();
+        Error(__func__, "Missing 'begin' at start of block", SynchSet);
+    }
 
-        }
+    DefinitionPart(SynchSet);
+
+    StatementPart(SynchSet);
+
+//match end
+    if(laSymbol == KW_END)
+    {
+        match(laSymbol, __func__);
+    }
+    else
+    {
+        Error(__func__, "Missing 'end' at end of block", SynchSet);
     }
 
 }
 
 //first set :  const proc integer Boolean
 //follow set :  skip read write call if do name end
-void Parser::DefinitionPart()
+void Parser::DefinitionPart(vector <Symbol> SynchSet)
 {
     cout << "DefinitionPart\n";
 
-    switch(laToken->getSymbolName())
+    //add follow set to synch set
+    addSymbol(SynchSet, KW_SKIP);
+    addSymbol(SynchSet, KW_READ);
+    addSymbol(SynchSet, KW_WRITE);
+    addSymbol(SynchSet, KW_CALL);
+    addSymbol(SynchSet, KW_IF);
+    addSymbol(SynchSet, KW_DO);
+    addSymbol(SynchSet, ID);
+    addSymbol(SynchSet, KW_END);
+    //
+    addSymbol(SynchSet, KW_CONST);
+    addSymbol(SynchSet, KW_PROC);
+    addSymbol(SynchSet, KW_INTEGER);
+    addSymbol(SynchSet, KW_BOOLEAN);
+
+    switch(laSymbol)
     {
+    //proper definition part beginning / first set
     case KW_CONST:
     case KW_PROC:
     case KW_INTEGER:
     case KW_BOOLEAN:
-        Definition();
+        Definition(SynchSet);
+        //all definitions must be followed by a semicolon
+        if(laSymbol == SYM_SEMICOLON)
+        {
+            match(laSymbol, __func__);
+            DefinitionPart(SynchSet);
+        }
+        else
+        {
+            Error(__func__, "Missing ';' at end of Definition", SynchSet);
+            DefinitionPart(SynchSet);
+        }
         break;
+    //empty definition part / follow set
     case KW_SKIP:
     case KW_READ:
     case KW_WRITE:
@@ -195,65 +183,45 @@ void Parser::DefinitionPart()
     case KW_DO:
     case ID:
     case KW_END:
+	case SYM_EOF:
         return;
+	case SYM_SEMICOLON:
+		Error(__func__, "Blank statement", SynchSet);
+	//any unexpected or incorrect symbols
     default:
-        switch(laToken->getSymbolName())
+        if(panic)
         {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case KW_SKIP :
-        case KW_READ :
-        case KW_WRITE:
-        case KW_CALL:
-        case KW_IF:
-        case KW_DO:
-        case ID:
-        case KW_END:
             return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            DefinitionPart();
-
         }
+        Error(__func__, "Unexpected symbol", SynchSet);
+        DefinitionPart(SynchSet);
     }
 
-    if(laToken->getSymbolName() == SYM_SEMICOLON)
-    {
-        match(laToken->getSymbolName());
-        DefinitionPart();
-    }
-    else
-    {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case KW_SKIP :
-        case KW_READ :
-        case KW_WRITE:
-        case KW_CALL:
-        case KW_IF:
-        case KW_DO:
-        case ID:
-        case KW_END:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            DefinitionPart();
-
-        }
-    }
-
-    //DefinitionPart();
 }
 
 //first set :  skip read write call if do letter
-//follow set :  [] fi if od end
-void Parser::StatementPart()
+//follow set :  [] fi od end
+void Parser::StatementPart(vector <Symbol> SynchSet)
 {
     cout << "StatementPart\n";
-    switch(laToken->getSymbolName())
+
+    //add follow set to synch set
+    addSymbol(SynchSet, SYM_GUARD);
+    addSymbol(SynchSet, KW_FI);
+    addSymbol(SynchSet, KW_OD);
+    addSymbol(SynchSet, KW_END);
+    //first set
+    addSymbol(SynchSet, KW_SKIP);
+    addSymbol(SynchSet, KW_READ);
+    addSymbol(SynchSet, KW_WRITE);
+    addSymbol(SynchSet, KW_CALL);
+    addSymbol(SynchSet, KW_IF);
+    addSymbol(SynchSet, KW_DO);
+    addSymbol(SynchSet, ID);
+
+    switch(laSymbol)
     {
+	//correct statement part begin
     case KW_SKIP:
     case KW_READ:
     case KW_WRITE:
@@ -261,1232 +229,803 @@ void Parser::StatementPart()
     case KW_IF:
     case KW_DO:
     case ID:
-        Statement();
+        Statement(SynchSet);
+        if(laSymbol == SYM_SEMICOLON)
+        {
+            match(laSymbol, __func__);
+            StatementPart(SynchSet);
+        }
+        else
+        {
+            Error(__func__, "Missing ';' at end of Statement", SynchSet);
+        }
         break;
+	//follow set
     case SYM_GUARD:
     case KW_FI:
     case KW_OD:
     case KW_END:
+	case SYM_EOF:
         return;
+	case SYM_SEMICOLON:
+		Error(__func__, "Blank statement", SynchSet);
+		match(laSymbol,__func__);
+		break;
+	//unexpected symbols
     default:
-        switch(laToken->getSymbolName())
+        if(panic)
         {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
             return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            StatementPart();
         }
-    }
-    bool isgood = false;
-    while(isgood ==false)
-    {
-
-        if(laToken->getSymbolName() == SYM_SEMICOLON)
-        {
-            match(laToken->getSymbolName());
-            StatementPart();
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-                return;
-                isgood = true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //StatementPart();
-            }
-        }
+        Error(__func__, "Unexpected symbol", SynchSet);
     }
 
 }
 
 //first set :  const proc integer Boolean
 //follow set :  ;
-void Parser::Definition()
+void Parser::Definition(vector <Symbol> SynchSet)
 {
     cout << "Definition\n";
-    switch(laToken->getSymbolName())
+
+    addSymbol(SynchSet, SYM_SEMICOLON);
+
+    switch(laSymbol)
     {
     case KW_CONST:
-        ConstantDefinition();
-        return;
+        ConstantDefinition(SynchSet);
+        break;
     case KW_INTEGER:
     case KW_BOOLEAN:
-        VariableDefinition();
-        return;
+        VariableDefinition(SynchSet);
+        break;
     case KW_PROC:
-        ProcedureDefinition();
-        return;
-    case SYM_SEMICOLON:
-        return;
+        ProcedureDefinition(SynchSet);
+        break;
     default:
-
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case KW_SKIP :
-        case KW_READ :
-        case KW_WRITE:
-        case KW_CALL:
-        case KW_IF:
-        case KW_DO:
-        case ID:
-        case KW_END:
-        case KW_CONST :
-        case KW_PROC :
-        case KW_INTEGER:
-        case KW_BOOLEAN:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            Definition();
-        }
+        Error(__func__, "Unexpected symbol", SynchSet);
+        return;
         break;
     }
-
-    //Definition();
 }
 
 //first set :  const
 //follow set :  ;
-void Parser::ConstantDefinition()
+void Parser::ConstantDefinition(vector <Symbol> SynchSet)
 {
     cout << "ConstantDefinition\n";
-    //const
-    bool isgood = false;
-    while(isgood == false)
+
+    bool isGood = true;
+
+    addSymbol(SynchSet, SYM_SEMICOLON);
+    addSymbol(SynchSet, ID);
+    addSymbol(SynchSet, SYM_EQUAL);
+    addSymbol(SynchSet, NUMERAL);
+    addSymbol(SynchSet, KW_TRUE);
+    addSymbol(SynchSet, KW_FALSE);
+    int position = 0;
+    myType temptype;
+    int tempvalue = 0;
+//const
+    if(laSymbol == KW_CONST)
     {
+        match(laSymbol, __func__);
+    }
+    else
+    {	//this would be a very difficult error to encounter
+    	if(isGood)
+			{Error(__func__, "Missing 'const'", SynchSet); isGood = false;}
+    }
+//const name
+    if(laSymbol == ID)
+    {
+        NameToken *nt = (NameToken*)laToken;
+        position = nt->getPosition();
+        nt = nullptr;
+        ///
+        cout << position << endl;
 
-
-        if(laToken->getSymbolName() == KW_CONST)
-        {
-            match(laToken->getSymbolName());
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case KW_SKIP :
-            case KW_READ :
-            case KW_WRITE:
-            case KW_CALL:
-            case KW_IF:
-            case KW_DO:
-            case ID:
-            case KW_END:
-            case KW_CONST :
-            case KW_PROC :
-            case KW_INTEGER:
-            case KW_BOOLEAN:
-            case SYM_SEMICOLON :
-                return;
-                isgood=true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //ConstantDefinition();
-            }
-        }
+        ConstantName(SynchSet);
+    }
+    else
+    {
+    	if(isGood)
+			{Error(__func__, "Missing constant name", SynchSet); isGood = false;}
     }
 
-    //const name
-    isgood = false;
-    while(isgood == false)
+//equals
+    if(laSymbol == SYM_EQUAL)
     {
-        if(laToken->getSymbolName() == ID)
-        {
-            ConstantName();
-            isgood=true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case KW_SKIP :
-            case KW_READ :
-            case KW_WRITE:
-            case KW_CALL:
-            case KW_IF:
-            case KW_DO:
-            case ID:
-            case KW_END:
-            case KW_CONST :
-            case KW_PROC :
-            case KW_INTEGER:
-            case KW_BOOLEAN:
-            case SYM_SEMICOLON :
-                return;
-                isgood = true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //ConstantDefinition();
-            }
-        }
+        match(laSymbol, __func__);
+    }
+    else
+    {
+    	if(isGood)
+			{Error(__func__, "Missing '='", SynchSet); isGood = false;}
     }
 
-    isgood = false;
-    //equals
-    while(isgood == false)
-    {
+NumberToken *numt;
+NameToken *nt;
+TableEntry te;
 
-        if(laToken->getSymbolName() == SYM_EQUAL)
-        {
-            match(laToken->getSymbolName());
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case KW_SKIP :
-            case KW_READ :
-            case KW_WRITE:
-            case KW_CALL:
-            case KW_IF:
-            case KW_DO:
-            case ID:
-            case KW_END:
-            case KW_CONST :
-            case KW_PROC :
-            case KW_INTEGER:
-            case KW_BOOLEAN:
-            case SYM_SEMICOLON :
-                return;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //ConstantDefinition();
-            }
-        }
-    }
-    //constant
-    isgood = false;
-    while(isgood == false)
+//constant
+    switch(laSymbol)
     {
-        switch(laToken->getSymbolName())
+    case NUMERAL:
+        temptype = INT;
+        numt= (NumberToken*) laToken;
+        tempvalue = numt->getValue();
+        numt = nullptr;
+        Constant(SynchSet);
+        if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
         {
-        case NUMERAL:
-        case KW_FALSE:
-        case KW_TRUE:
-        case ID:
-            Constant();
-            isgood = true;
-            break;
-        default:
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case KW_SKIP :
-            case KW_READ :
-            case KW_WRITE:
-            case KW_CALL:
-            case KW_IF:
-            case KW_DO:
-            case ID:
-            case KW_END:
-            case KW_CONST :
-            case KW_PROC :
-            case KW_INTEGER:
-            case KW_BOOLEAN:
-            case SYM_SEMICOLON :
-                return;
-                isgood = true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //ConstantDefinition();
-            }
+            admin->error("This is an error. Ambiguous definition of constant", 3)
         }
+        break;
+    case KW_FALSE:
+        temptype = BOOL;
+        tempvalue = 0;
+        Constant(SynchSet);
+        if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
+        {
+            admin->error("This is an error. Ambiguous definition of constant", 3)
+        }
+        break;
+    case KW_TRUE:
+        temptype = BOOL;
+        tempvalue=1;
+        Constant(SynchSet);
+        if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
+        {
+            admin->error("This is an error. Ambiguous definition of constant", 3)
+        }
+        break;
+    case ID:
+
+        nt = (NameToken*) laToken;
+        bool error;
+        te = bt.find(nt->getPosition(),error );
+        temptype = te.type;
+        tempvalue = te.value;
+        Constant(SynchSet);
+        if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
+        {
+            admin->error("This is an error. Ambiguous definition of constant", 3)
+        }
+
+        break;
+    default:
+    	if(isGood)
+			{Error(__func__, "Missing constant", SynchSet); isGood = false;}
     }
+
 }
 
 //first set :  integer boolean
 //follow set :  ;
-void Parser::VariableDefinition()
+void Parser::VariableDefinition(vector <Symbol> SynchSet)
 {
     cout << "VariableDefinition\n";
-    //type symbol
-    bool isgood = false;
-    while(isgood == false)
+
+    addSymbol(SynchSet, SYM_SEMICOLON);
+    myType temptype;
+//type symbol
+    switch(laSymbol)
     {
-
-        if(laToken->getSymbolName() == KW_INTEGER | laToken->getSymbolName() == KW_BOOLEAN)
-        {
-            TypeSymbol();
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case KW_SKIP :
-            case KW_READ :
-            case KW_WRITE:
-            case KW_CALL:
-            case KW_IF:
-            case KW_DO:
-            case ID:
-            case KW_END:
-            case KW_CONST :
-            case KW_PROC :
-            case KW_INTEGER:
-            case KW_BOOLEAN:
-            case SYM_SEMICOLON :
-                isgood= true;
-                return;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //VariableDefinition();
-            }
-        }
+    case KW_INTEGER:
+    case KW_BOOLEAN:
+        temptype =TypeSymbol(SynchSet);
+        break;
+    default:
+        Error(__func__, "", SynchSet);
+        return;
     }
-    isgood = false;
-    while(isgood == false)
+
+//variable definition A
+    if(laSymbol == ID | laSymbol == KW_ARRAY)
     {
-
-        if(laToken->getSymbolName() == ID | laToken->getSymbolName() == KW_ARRAY)
-        {
-            isgood = true;
-            VariableDefinitionA();
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case KW_SKIP :
-            case KW_READ :
-            case KW_WRITE:
-            case KW_CALL:
-            case KW_IF:
-            case KW_DO:
-            case ID:
-            case KW_END:
-            case KW_CONST :
-            case KW_PROC :
-            case KW_INTEGER:
-            case KW_BOOLEAN:
-            case SYM_SEMICOLON :
-                return;
-                isgood = true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //VariableDefinition();
-            }
-        }
+        VariableDefinitionA(SynchSet,temptype);
     }
-    //variable definition A
-
+    else
+    {
+        Error(__func__, "Incorrect variable definition", SynchSet);
+        return;
+    }
 }
 
 //first set :  array letter
 //follow set :  ;
-void Parser::VariableDefinitionA()
+void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
 {
     cout << "VariableDefinitionA\n";
-    bool isgood = false;
 
-
-    if(laToken->getSymbolName() == ID)
+    addSymbol(SynchSet, SYM_SEMICOLON);
+    int numberInArray =0;
+    vector<int> varlist;
+    if(laSymbol == ID)
     {
-        VariableList();
+        varlist = VariableList(SynchSet);
+        for(int i = 0; i<varlist.size();i++)
+        {
+            if(!bt.define(varlist[i],VAR,TempType,1,0))
+            {
+                admin->error("Ambiguous definition of variable", 3)
+            }
+        }
         return;
     }
-    else if(laToken->getSymbolName() == KW_ARRAY)
+    else if(laSymbol == KW_ARRAY)
     {
-        match(laToken->getSymbolName());
+        bool isProperArray = false;
 
-        while(isgood == false)
+        match(laSymbol, __func__);
+        if(laSymbol == ID)
         {
+           varlist= VariableList(SynchSet);
+        }
+        else
+        {
+            Error(__func__, "", SynchSet);
+            return;
+        }
 
-            if(laToken->getSymbolName() == ID)
+        if(laSymbol == SYM_LEFTSQUARE)
+        {
+            match(laSymbol, __func__);
+        }
+        else
+        {
+            Error(__func__, "", SynchSet);
+            return;
+        }
+        NumberToken *nt;
+        NameToken *namet;
+        TableEntry te;
+        myType typeCheck;
+        bool error;
+        switch(laSymbol)
+        {
+        case NUMERAL:
+            nt = (NumberToken*) laToken;
+            numberInArray =nt->getValue();
+            Constant(SynchSet);
+            isProperArray = true;
+            break;
+        case KW_TRUE:
+            isProperArray= false;
+            admin->error("An array should have an int as the amount of variables.",3);
+            Constant(SynchSet);
+            break;
+        case KW_FALSE:
+            isProperArray= false;
+            admin->error("An array should have an int as the amount of variables.",3);
+            numberInArray = 0;
+            Constant(SynchSet);
+            break;
+        case ID:
+            namet = (NameToken*) laToken;
+            te = bt.find(namet->getPosition(),error);
+            typeCheck = te.type;
+            if(typeCheck == INT)
             {
-                VariableList();
-                isgood=true;
+                numberInArray = te.value;
+                isProperArray = true;
             }
             else
             {
-                switch(laToken->getSymbolName())
-                {
-                case SYM_EOF :
-                case SYM_PERIOD :
-                case KW_SKIP :
-                case KW_READ :
-                case KW_WRITE:
-                case KW_CALL:
-                case KW_IF:
-                case KW_DO:
-                case ID:
-                case KW_END:
-                case KW_CONST :
-                case KW_PROC :
-                case KW_INTEGER:
-                case KW_BOOLEAN:
-                case SYM_SEMICOLON :
-                    return;
-                    isgood = true;
-                default:
-                    Error(__func__, laToken->getSymbolName());
-                    //VariableDefinitionA();
-                }
+                isProperArray= false;
+                admin->error("An array should have an int as the amount of variables.",3);
             }
+            Constant(SynchSet);
+            break;
+        default:
+            Error(__func__, "", SynchSet);
+            return;
+            break;
         }
-        isgood = false;
-        while(isgood == false)
-        {
 
-            if(laToken->getSymbolName() == SYM_LEFTSQUARE)
-            {
-                match(laToken->getSymbolName());
-                isgood=true;
-            }
-            else
-            {
-                switch(laToken->getSymbolName())
-                {
-                case SYM_EOF :
-                case SYM_PERIOD :
-                case KW_SKIP :
-                case KW_READ :
-                case KW_WRITE:
-                case KW_CALL:
-                case KW_IF:
-                case KW_DO:
-                case ID:
-                case KW_END:
-                case KW_CONST :
-                case KW_PROC :
-                case KW_INTEGER:
-                case KW_BOOLEAN:
-                case SYM_SEMICOLON :
-                    return;
-                    isgood = true;
-                default:
-                    Error(__func__, laToken->getSymbolName());
-                    //VariableDefinitionA();
-                }
-            }
-        }
-        isgood= false;
-        while(isgood==false)
+        if(laSymbol == SYM_RIGHTSQUARE)
         {
+            match(laSymbol, __func__);
 
-            switch(laToken->getSymbolName())
+            if(isProperArray)
             {
-            case NUMERAL:
-            case KW_TRUE:
-            case KW_FALSE:
-            case ID:
-                Constant();
-                isgood = true;
-                break;
-            default:
-                switch(laToken->getSymbolName())
+                for(int i = 0; i<varlist.size();i++)
                 {
-                case SYM_EOF :
-                case SYM_PERIOD :
-                case KW_SKIP :
-                case KW_READ :
-                case KW_WRITE:
-                case KW_CALL:
-                case KW_IF:
-                case KW_DO:
-                case ID:
-                case KW_END:
-                case KW_CONST :
-                case KW_PROC :
-                case KW_INTEGER:
-                case KW_BOOLEAN:
-                case SYM_SEMICOLON :
-                    return;
-                    isgood = true;
-                default:
-                    Error(__func__, laToken->getSymbolName());
-                    //VariableDefinitionA();
+                    if(!bt.define(varlist[i],ARR,TempType,numberInArray,0))
+                    {
+                        admin->error("Ambiguous definition of variable",3);
+                    }
                 }
-                break;
             }
+
+
         }
-        isgood= false;
-        while(isgood==false)
+        else
         {
-            if(laToken->getSymbolName() == SYM_RIGHTSQUARE)
-            {
-                match(laToken->getSymbolName());
-                isgood = true;
-            }
-            else
-            {
-                switch(laToken->getSymbolName())
-                {
-                case SYM_EOF :
-                case SYM_PERIOD :
-                case KW_SKIP :
-                case KW_READ :
-                case KW_WRITE:
-                case KW_CALL:
-                case KW_IF:
-                case KW_DO:
-                case ID:
-                case KW_END:
-                case KW_CONST :
-                case KW_PROC :
-                case KW_INTEGER:
-                case KW_BOOLEAN:
-                case SYM_SEMICOLON :
-                    return;
-                    isgood=true;
-                default:
-                    Error(__func__, laToken->getSymbolName());
-                    //VariableDefinitionA();
-                }
-            }
+            Error(__func__, "", SynchSet);
+            return;
         }
     }
     else
     {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case KW_SKIP :
-        case KW_READ :
-        case KW_WRITE:
-        case KW_CALL:
-        case KW_IF:
-        case KW_DO:
-        case ID:
-        case KW_END:
-        case KW_CONST :
-        case KW_PROC :
-        case KW_INTEGER:
-        case KW_BOOLEAN:
-        case SYM_SEMICOLON :
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            VariableDefinitionA();
-        }
+        Error(__func__, "", SynchSet);
+        return;
     }
 
 
 }
-//first: integer, boolean
-//follow: array, letter
-void Parser::TypeSymbol()
+
+myType Parser::TypeSymbol(vector <Symbol> SynchSet)
 {
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case KW_INTEGER:
+        match(laSymbol, __func__);
+        return INT;
+        break;
     case KW_BOOLEAN:
-        match(laToken->getSymbolName());
+        match(laSymbol, __func__);
+        return BOOL;
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case KW_SKIP :
-        case KW_READ :
-        case KW_WRITE:
-        case KW_CALL:
-        case KW_IF:
-        case KW_DO:
-        case ID:
-        case KW_END:
-        case KW_CONST :
-        case KW_PROC :
-        case KW_INTEGER:
-        case KW_BOOLEAN:
-        case SYM_SEMICOLON :
-        case KW_ARRAY:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            TypeSymbol();
-        }
+        Error(__func__, "", SynchSet);
+        return UNIVERSAL;
     }
 }
 
 //first set :  letter
 //follow set :   := [ ;
-void Parser::VariableList()
+vector<int> Parser::VariableList(vector <Symbol> SynchSet)
 {
     cout << "VariableList\n";
 
-    switch(laToken->getSymbolName())
+    vector<int> positionVec;
+    vector<int> Vec;
+    addSymbol(SynchSet, SYM_SEMICOLON);
+    addSymbol(SynchSet, SYM_ASSIGNMENT);
+    addSymbol(SynchSet, SYM_LEFTSQUARE);
+    NameToken *nt;
+    int position;
+    vector<int> newVec;
+    switch(laSymbol)
     {
     case ID:
-        VariableName();
-        VariableListA();
+        nt = (NameToken*) laToken;
+        position =nt->getPosition();
+        positionVec.push_back(position);
+        VariableName(SynchSet);
+        newVec=VariableListA(SynchSet);
+        positionVec.insert(positionVec.end(),newVec.begin(),newVec.end());
+        return positionVec;
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case KW_SKIP :
-        case KW_READ :
-        case KW_WRITE:
-        case KW_CALL:
-        case KW_IF:
-        case KW_DO:
-        case ID:
-        case KW_END:
-        case KW_CONST :
-        case KW_PROC :
-        case KW_INTEGER:
-        case KW_BOOLEAN:
-        case SYM_SEMICOLON :
-        case SYM_ASSIGNMENT:
-        case SYM_LEFTSQUARE:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            VariableList();
-        }
+        Error(__func__, "Error in VariableList", SynchSet);
+        return Vec;
     }
 }
 
 //first set :  ,
 //follow set :  := ;
-void Parser::VariableListA()
+vector<int> Parser::VariableListA(vector <Symbol> SynchSet)
 {
-    switch(laToken->getSymbolName())
+    vector<int> intVec;
+
+
+    switch(laSymbol)
     {
     case SYM_COMMA:
-        match(laToken->getSymbolName());
-        VariableList();
+        match(laSymbol, __func__);
+        return VariableList(SynchSet);
         break;
     case SYM_ASSIGNMENT:
     case SYM_LEFTSQUARE:
     case SYM_SEMICOLON:
-        return;
+        return intVec;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case KW_SKIP :
-        case KW_READ :
-        case KW_WRITE:
-        case KW_CALL:
-        case KW_IF:
-        case KW_DO:
-        case ID:
-        case KW_END:
-        case KW_CONST :
-        case KW_PROC :
-        case KW_INTEGER:
-        case KW_BOOLEAN:
-        case SYM_SEMICOLON :
-        case SYM_ASSIGNMENT:
-        case SYM_LEFTSQUARE:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            VariableListA();
-        }
+        Error(__func__, "", SynchSet);
+        return intVec;
     }
 
 }
 
 //first set :  proc
 //follow set :  ;
-void Parser::ProcedureDefinition()
+void Parser::ProcedureDefinition(vector <Symbol> SynchSet)
 {
-    if(laToken->getSymbolName() == KW_PROC)
+    if(laSymbol == KW_PROC)
     {
-        match(laToken->getSymbolName());
-        ProcedureName(); ///add in more IF to make sure? redundant
-        Block();
+        match(laSymbol, __func__);
+        int position = ProcedureName(SynchSet);
+
+        if(position != -1)
+        {
+
+
+        if(!bt.define(position,PROC,UNIVERSAL,1,0))
+        {
+            admin->error("Ambiguous definition of procedure",3);
+        }
+        }
+        else
+        {
+            admin->error("That Identifier token doesn't exist",3);
+        }
+        if(!(bt.newBlock()))
+        {
+            admin->error("Fatal error",1);
+        }
+        Block(SynchSet);
+        bt.endBlock();
     }
     else
     {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case KW_SKIP :
-        case KW_READ :
-        case KW_WRITE:
-        case KW_CALL:
-        case KW_IF:
-        case KW_DO:
-        case ID:
-        case KW_END:
-        case KW_CONST :
-        case KW_PROC :
-        case KW_INTEGER:
-        case KW_BOOLEAN:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            ProcedureDefinition();
-        }
+        Error(__func__, "", SynchSet);
+        return;
     }
 }
 
 //first set : skip read write call if do letter
 //follow set : ;
-void Parser::Statement()
+void Parser::Statement(vector <Symbol> SynchSet)
 {
     cout << "Statement\n";
 
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case KW_SKIP:
-        EmptyStatement();
+        EmptyStatement(SynchSet);
         break;
     case KW_CALL:
-        ProcedureStatement();
+        ProcedureStatement(SynchSet);
         break;
     case KW_READ:
-        ReadStatement();
+        ReadStatement(SynchSet);
         break;
     case KW_WRITE:
-        WriteStatement();
+        WriteStatement(SynchSet);
         break;
     case KW_IF:
-        IfStatement();
+        IfStatement(SynchSet);
         break;
     case KW_DO:
-        DoStatement();
+        DoStatement(SynchSet);
         break;
     case ID: //assignment statement
-        AssignmentStatement();
+        AssignmentStatement(SynchSet);
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            Statement();
-        }
+        Error(__func__, "", SynchSet);
+        return;
     }
 }
 
 //first set : skip
 //follow set : ;
-void Parser::EmptyStatement()
+void Parser::EmptyStatement(vector <Symbol> SynchSet)
 {
     cout << "EmptyStatement\n";
-    if(laToken->getSymbolName() == KW_SKIP)
+    SynchSet.push_back(SYM_SEMICOLON);
+
+    if(laSymbol == KW_SKIP)
     {
-        match(laToken->getSymbolName());
+        match(laSymbol, __func__);
     }
     else
     {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            EmptyStatement();
-        }
+        Error(__func__, "", SynchSet);
+        return;
     }
+
+    SynchSet.pop_back();
 
 }
 
 //first set : read
 //follow set : ;
-void Parser::ReadStatement()
+void Parser::ReadStatement(vector <Symbol> SynchSet)
 {
     cout << "ReadStatement\n";
 
-    if(laToken->getSymbolName() == KW_READ)
+    if(laSymbol == KW_READ)
     {
-        match(laToken->getSymbolName());
-        VariableAccessList();
+        match(laSymbol, __func__);
+        VariableAccessList(SynchSet);
     }
     else
     {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            ReadStatement();
-        }
+        Error(__func__, "", SynchSet);
+        return;
     }
 
 }
 
 //first set : write
 //follow set : ;
-void Parser::WriteStatement()
+void Parser::WriteStatement(vector <Symbol> SynchSet)
 {
     cout << "WriteStatement \n";
 
-    if(laToken->getSymbolName() == KW_WRITE)
+    if(laSymbol == KW_WRITE)
     {
-        match(laToken->getSymbolName());
-        ExpressionList();
+        match(laSymbol, __func__);
+        ExpressionList(SynchSet);
     }
     else
     {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            WriteStatement();
-        }
+        Error(__func__, "", SynchSet);
+        return;
     }
 }
 
 //first set : letter
 //follow set : ;
-void Parser::AssignmentStatement()
+void Parser::AssignmentStatement(vector <Symbol> SynchSet)
 {
     cout << "AssignmentStatement  \n";
-    //variable access list
-    bool isgood= false;
-    while(isgood==false)
+//variable access list
+    vector<myType> typeList1;
+    vector<myType> typeList2;
+    if(laSymbol == ID)
     {
-
-        if(laToken->getSymbolName() == ID)
-        {
-            VariableAccessList();
-            isgood=true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-            case SYM_SEMICOLON:
-                return;
-                isgood=true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //AssignmentStatement();
-            }
-        }
+        typeList1 = VariableAccessList(SynchSet);
     }
-    //assignment symbol
-    isgood = false;
-    while(isgood == false)
+    else
     {
-
-        if(laToken->getSymbolName() == SYM_ASSIGNMENT)
-        {
-            match(laToken->getSymbolName());
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-            case SYM_SEMICOLON:
-                return;
-                isgood = true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //AssignmentStatement();
-            }
-        }
+        Error(__func__, "", SynchSet);
+        return;
     }
-    //Expression - ( ~ false true number letter
-    isgood = false;
-    while(isgood == false)
+//assignment symbol
+    if(laSymbol == SYM_ASSIGNMENT)
     {
-
-        switch(laToken->getSymbolName())
+        match(laSymbol, __func__);
+    }
+    else
+    {
+        Error(__func__, "expected ':=' in assignment statement", SynchSet);
+        return;
+    }
+//Expression - ( ~ false true number letter
+    switch(laSymbol)
+    {
+    case SYM_MINUS:
+    case SYM_LEFTPAREN:
+    case KW_FALSE:
+    case KW_TRUE:
+    case NUMERAL:
+    case ID:
+        typeList2 =ExpressionList(SynchSet);
+        break;
+    default:
+        Error(__func__, "Error in assignment statement list", SynchSet);
+        return;
+    }
+    if(typeList1.size()== typeList2.size())
+    {
+        for(int i = 0; i<typeList1.size();i++)
         {
-        case SYM_MINUS:
-        case SYM_LEFTPAREN:
-        case KW_FALSE:
-        case KW_TRUE:
-        case NUMERAL:
-        case ID:
-            ExpressionList();
-            isgood=true;
-            break;
-        default:
-            switch(laToken->getSymbolName())
+            if(typeList1[i] != typeList2[i])
             {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-            case SYM_SEMICOLON:
-                return;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //AssignmentStatement();
+                admin->error("Type mismatch between variable list and expression list ",3);
             }
         }
+
+    }
+    else
+    {
+        admin->error("There was a number of items mismatch between variables and expressions",3);
     }
 
 }
 
 //first set : call
 //follow set : ;
-void Parser::ProcedureStatement()
+void Parser::ProcedureStatement(vector <Symbol> SynchSet)
 {
     cout << "ProcedureStatement\n";
-    bool isgood = false;
-    while(isgood == false)
+    if(laSymbol == KW_CALL)
     {
-
-        if(laToken->getSymbolName() == KW_CALL)
-        {
-            match(laToken->getSymbolName());
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-            case SYM_SEMICOLON:
-                return;
-                isgood = true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //       ProcedureStatement();
-            }
-        }
+        match(laSymbol, __func__);
     }
-    isgood = false;
-    while(isgood == false)
+    else
+    {
+        Error(__func__, "", SynchSet);
+        return;
+    }
+
+    if(laSymbol == ID)
     {
 
-        if(laToken->getSymbolName() == ID)
-        {
-            ProcedureName();
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
+       int position = ProcedureName(SynchSet);
+       bool error;
+       TableEntry te = bt.find(position,error);
+       int tempindex = te.index;
+       Kind tempkind = te.kind;
+       if(tempindex != -1)
+       {
+            if(tempkind!= PROC)
             {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-            case SYM_SEMICOLON:
-                return;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //ProcedureStatement();
+                admin->error("Cannot make a procedure call to something that isn't a procedure.",3);
             }
-        }
+       }
+       else
+       {
+           admin->error("The procedure called didn't exist",3);
+       }
+
+    }
+    else
+    {
+        Error(__func__, "", SynchSet);
+        return;
     }
 }
 
 //first set : if
 //follow set : ;
-void Parser::IfStatement()
+void Parser::IfStatement(vector <Symbol> SynchSet)
 {
     cout << "IfStatement\n";
-    bool isgood = false;
-    while(isgood == false)
-    {
 
-        if(laToken->getSymbolName() == KW_IF)
-        {
-            match(laToken->getSymbolName());
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-            case SYM_SEMICOLON:
-                return;
-                isgood = true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //       IfStatement();
-            }
-        }
+    if(laSymbol == KW_IF)
+    {
+        match(laSymbol, __func__);
     }
-    ///add checks for this (expression)
-    GuardedCommandList();
-    isgood = false;
-    while(isgood == false)
+    else
     {
+        Error(__func__, "", SynchSet);
+        return;
+    }
+    GuardedCommmandList(SynchSet);
 
-        if(laToken->getSymbolName() == KW_FI)
-        {
-            match(laToken->getSymbolName());
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-            case SYM_SEMICOLON:
-                return;
-                isgood = true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                //IfStatement();
-            }
-        }
+    if(laSymbol == KW_FI)
+    {
+        match(laSymbol, __func__);
+    }
+    else
+    {
+        Error(__func__, "", SynchSet);
+        return;
     }
 }
 
 //first set : do
 //follow set : ;
-void Parser::DoStatement()
+void Parser::DoStatement(vector <Symbol> SynchSet)
 {
     cout << "DoStatement\n";
-    bool isgood = false;
-    while(isgood == false)
-    {
 
-        if(laToken->getSymbolName() == KW_DO)
-        {
-            match(laToken->getSymbolName());
-            isgood = true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-            case SYM_SEMICOLON:
-                return;
-                isgood=true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                // DoStatement();
-            }
-        }
+    if(laSymbol == KW_DO)
+    {
+        match(laSymbol, __func__);
+    }
+    else
+    {
+        Error(__func__, "", SynchSet);
+        return;
     }
 
-    GuardedCommandList();
+    GuardedCommmandList(SynchSet);
 
-    isgood = false;
-    while(isgood == false)
+    if(laSymbol == KW_OD)
     {
-
-        if(laToken->getSymbolName() == KW_OD)
-        {
-            match(laToken->getSymbolName());
-            isgood=true;
-        }
-        else
-        {
-            switch(laToken->getSymbolName())
-            {
-            case SYM_EOF :
-            case SYM_PERIOD :
-            case SYM_GUARD :
-            case KW_FI :
-            case KW_IF:
-            case KW_OD:
-            case KW_END:
-            case SYM_SEMICOLON:
-                return;
-                isgood=true;
-            default:
-                Error(__func__, laToken->getSymbolName());
-                // DoStatement();
-            }
-        }
+        match(laSymbol, __func__);
+    }
+    else
+    {
+        Error(__func__, "", SynchSet);
+        return;
     }
 }
 
 //first set : letter
 //follow set : := ;
-void Parser::VariableAccessList()
+vector<myType> Parser::VariableAccessList(vector <Symbol> SynchSet)
 {
     cout << "VariableAccessList\n";
+    vector<myType> typeVec;
+    vector<myType> newVec;
+    myType temptype;
 
-    if(laToken->getSymbolName() == ID)
+    if(laSymbol == ID)
     {
-        VariableAccess();
-        VariableAccessListA();
+//        NameToken *nt = (NameToken*) laToken;
+//        bool error;
+//        TableEntry te = bt.find(nt->getPosition(),error);
+//        myType temptype = te.type;
+        temptype = VariableAccess(SynchSet);
+        typeVec.push_back(temptype);
+        newVec =VariableAccessListA(SynchSet);
+        typeVec.insert(typeVec.end(),newVec.begin(),newVec.end());
+        return typeVec;
     }
     else
     {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_ASSIGNMENT:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            VariableAccessList();
-        }
+        Error(__func__, "Unexpected symbol", SynchSet);
+        return newVec;
     }
-
 
 }
 
 //first set : ,
 //follow set : := ;
-void Parser::VariableAccessListA()
+vector<myType> Parser::VariableAccessListA(vector <Symbol> SynchSet)
 {
     cout << "VariableAccessListA\n";
-
-    switch(laToken->getSymbolName())
+    vector<myType> typeVec;
+    switch(laSymbol)
     {
     case SYM_COMMA:
-        match(laToken->getSymbolName());
-        VariableAccessList();
+        match(laSymbol, __func__);
+        typeVec=VariableAccessList(SynchSet);
+        return typeVec;
         break;
     case SYM_ASSIGNMENT:
-    case SYM_SEMICOLON:
-        return;
+        return typeVec;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_ASSIGNMENT:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            VariableAccessListA();
+        if(isMember(SynchSet, laSymbol)){
+            return typeVec;
         }
-
+        Error(__func__, "expected ',' or ':='", SynchSet);
+        return typeVec;
     }
-
-
 }
 
 //first set : letter
 //follow set : * / \ + - < > = ^ | := ( [ , ;
-void Parser::VariableAccess()
+myType Parser::VariableAccess(vector <Symbol> SynchSet)
 {
     cout << "VariableAccess \n";
-
-    if(laToken->getSymbolName() == ID)
+    myType type;
+    if(laSymbol == ID)
     {
-        VariableName();
-        IndexedSelector();
+        NameToken *nt = (NameToken*) laToken;
+        bool error;
+        TableEntry te = bt.find(nt->getPosition(),error);
+        int tempindex = te.index;
+        myType temptype;
+        Kind tempKind = te.kind;
+        VariableName(SynchSet);
+        int present = IndexedSelector(SynchSet);
+        if(tempindex != -1)
+        {
+            temptype = te.type;
+        }
+        else
+        {
+            temptype = UNIVERSAL;
+        }
+
+        return temptype;
+
+        if(present == 1)
+        {
+            if(tempKind != ARR)
+            {
+                admin->error("A variable with an indexed selector must be an array",3);
+            }
+        }
+        else
+        {
+            if(tempKind != VAR)
+            {
+                admin->error( "A variable without an indexed selector must be a var",3);
+            }
+        }
     }
 }
 
 //first set : - ( ~ false true number letter
 //follow set : ;
-void Parser::ExpressionList()
+vector<myType> Parser::ExpressionList(vector <Symbol> SynchSet)
 {
     cout << "ExpressionList \n";
 
-    switch(laToken->getSymbolName())
+    vector<myType> typeVec;
+    myType type;
+    vector<myType> newVec;
+
+    switch(laSymbol)
     {
     case SYM_MINUS:
     case SYM_LEFTPAREN:
@@ -1495,68 +1034,46 @@ void Parser::ExpressionList()
     case KW_TRUE:
     case NUMERAL:
     case ID:
-        Expression();
-        ExpressionListA();
+        type =Expression(SynchSet);
+        typeVec.push_back(type);
+        newVec =ExpressionListA(SynchSet);
+        typeVec.insert(typeVec.end(),newVec.begin(),newVec.end());
+        return typeVec;
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            ExpressionList();
-        }
+        Error(__func__, "Expected expression", SynchSet);
+        return typeVec;
     }
 }
 
 //first set : ,
 //follow set : ;
-void Parser::ExpressionListA()
+vector<myType> Parser::ExpressionListA(vector <Symbol> SynchSet)
 {
     cout << "ExpressionListA \n";
-
-    switch(laToken->getSymbolName())
+    vector<myType> newVec;
+    switch(laSymbol)
     {
     case SYM_COMMA:
-        match(laToken->getSymbolName());
-        ExpressionList();
+        match(laSymbol, __func__);
+        return ExpressionList(SynchSet);
         break;
     case SYM_SEMICOLON:
-        return;
+        return newVec;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            ExpressionListA();
-        }
+        Error(__func__, "Expected ',' or ';'", SynchSet);
+        return newVec;
     }
 }
 
 //first set: - ( ~ false true name
 //follow set: guard fi od
-void Parser::GuardedCommand()
+void Parser::GuardedCommand(vector <Symbol> SynchSet)
 {
-    cout << "Guarded Commmand\n";
-    bool isgood = false;
-    switch(laToken->getSymbolName())
+    cout << "GuardedCommand\n";
+
+    myType type;
+    switch(laSymbol)
     {
     case SYM_MINUS:
     case SYM_LEFTPAREN:
@@ -1564,133 +1081,82 @@ void Parser::GuardedCommand()
     case KW_TRUE:
     case KW_FALSE:
     case ID:
-        Expression();
-        while(isgood== false)
+        type =Expression(SynchSet);
+        if(type != BOOL)
         {
-
-            if(laToken->getSymbolName() == SYM_RIGHTARROW)
-            {
-                match(laToken->getSymbolName());
-                StatementPart();
-                isgood=true;
-            }
-            else
-            {
-                switch(laToken->getSymbolName())
-                {
-                case SYM_EOF :
-                case SYM_PERIOD :
-                case SYM_GUARD :
-                case KW_FI :
-                case KW_IF:
-                case KW_OD:
-                case KW_END:
-                case SYM_SEMICOLON:
-                    return;
-                default:
-                    Error(__func__, laToken->getSymbolName());
-                    //GuardedCommand();
-                }
-            }
+            admin->error("A guarded command must be of type bool",3);
+        }
+        if(laSymbol == SYM_RIGHTARROW)
+        {
+            match(laSymbol, __func__);
+            StatementPart(SynchSet);
+        }
+        else
+        {
+            Error(__func__, "Expected '->'", SynchSet);
+            return;
         }
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            GuardedCommand();
-        }
+        Error(__func__, "Unexpected symbol", SynchSet);
+        return;
         break;
     }
 }
 
 //first set : - ( ~ false true name
 //follow set : fi od
-void Parser::GuardedCommandList()
+void Parser::GuardedCommmandList(vector <Symbol> SynchSet)
 {
     cout << "GuardedCommandList \n";
 
-    GuardedCommand();
+    GuardedCommand(SynchSet);
 
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case SYM_GUARD:
-        GuardedCommandListA();
+        GuardedCommmandListA(SynchSet);
         break;
     case KW_FI:
     case KW_OD:
         return;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            GuardedCommandList();
-        }
+        Error(__func__, "Expected end of statement or '[]'", SynchSet);
+        return;
     }
 
 }
 
 //first set : []
 //follow set : fi od
-void Parser::GuardedCommandListA()
+void Parser::GuardedCommmandListA(vector <Symbol> SynchSet)
 {
     cout << "GuardedCommandListA \n";
 
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case SYM_GUARD:
-        match(laToken->getSymbolName());
-        GuardedCommandList();
+        match(laSymbol, __func__);
+        GuardedCommmandList(SynchSet);
         break;
     case KW_FI:
     case KW_OD:
         return;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            GuardedCommandListA();
-        }
+        Error(__func__, "Expected end of statement or '[]'", SynchSet);
+        return;
     }
 }
 
 //first set : - ( ~ false true number letter
 //follow set : , ) ] ;
-void Parser::Expression()
+myType Parser::Expression(vector <Symbol> SynchSet)
 {
     cout << "Expression \n";
 
-    switch(laToken->getSymbolName())
+    myType type;
+    vector<myType> typeVec;
+    switch(laSymbol)
     {
     case SYM_MINUS:
     case SYM_LEFTPAREN:
@@ -1699,121 +1165,84 @@ void Parser::Expression()
     case KW_FALSE:
     case ID:
     case NUMERAL:
-        PrimaryExpression();
-        ExpressionA();
+        type = PrimaryExpression(SynchSet);
+        typeVec =ExpressionA(SynchSet);
+        if(typeVec.size()> 0 && type!= BOOL)
+        {
+            admin->error("An access of multiple expressions must be a boolean value, not a mathematical one.",3);
+        }
+        else if(typeVec.size()>0 && type == BOOL)
+        {
+            for(int i = 0; i<typeVec.size();i++)
+            {
+                if(typeVec[i] != BOOL)
+                {
+                    admin->error("The constituent parts of multiple expressions must be a boolean value, not a mathematical one.",3);
+                }
+            }
+        }
+        return type;
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            Expression();
-        }
+        Error(__func__, "Bad expression", SynchSet);
+        return UNIVERSAL;
         break;
     }
 }
 
 //first set : and or
 //follow set : , -> ) ] ;
-void Parser::ExpressionA()
+vector<myType> Parser::ExpressionA(vector <Symbol> SynchSet)
 {
     cout << "ExpressionA \n";
-
-    switch(laToken->getSymbolName())
+    vector<myType> typeVec;
+    myType type;
+    switch(laSymbol)
     {
     case SYM_AND:
     case SYM_OR:
-        PrimaryOperator();
-        PrimaryExpression();
+        PrimaryOperator(SynchSet);
+        type = PrimaryExpression(SynchSet);
+        typeVec.push_back(type);
+        return typeVec;
         break;
     case SYM_COMMA:
     case SYM_RIGHTPAREN:
     case SYM_RIGHTARROW:
     case SYM_RIGHTSQUARE:
     case SYM_SEMICOLON:
-        return;
+        return typeVec;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTARROW:
-        case SYM_RIGHTSQUARE:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            ExpressionA();
-        }
+        Error(__func__, "Expected primary expression or expression", SynchSet);
+        return typeVec;
     }
 }
 
 //first set : and or
 //follow set : - ( ~ false true number letter
-void Parser::PrimaryOperator()
+void Parser::PrimaryOperator(vector <Symbol> SynchSet)
 {
     cout << "PrimaryOperator \n";
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case SYM_AND:
     case SYM_OR:
-        match(laToken->getSymbolName());
+        match(laSymbol, __func__);
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_MINUS:
-        case SYM_LEFTPAREN:
-        case SYM_NOT:
-        case KW_FALSE:
-        case KW_TRUE:
-        case NUMERAL:
-        case ID:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            PrimaryOperator();
-        }
+        Error(__func__, "Expected '^' or '|'", SynchSet);
+        return;
     }
 }
 
 //first set : - ( ~ false true number letter
 //follow set : ^ | , ) ] ;
-void Parser::PrimaryExpression()
+myType Parser::PrimaryExpression(vector <Symbol> SynchSet)
 {
     cout << "PrimaryExpression \n";
-
-    switch(laToken->getSymbolName())
+    myType type;
+    vector<myType> typeVec;
+    switch(laSymbol)
     {
     case SYM_MINUS:
     case SYM_LEFTPAREN:
@@ -1822,47 +1251,36 @@ void Parser::PrimaryExpression()
     case KW_FALSE:
     case ID:
     case NUMERAL:
-        SimpleExpression();
-        PrimaryExpressionA();
+        type=SimpleExpression(SynchSet);
+        typeVec =PrimaryExpressionA(SynchSet);
+        if(typeVec.size() > 0)
+        {
+            return BOOL;
+        }
+        return type;
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            PrimaryExpression();
-        }
+        Error(__func__, "", SynchSet);
+        return UNIVERSAL;
     }
 }
 
 //first set : < > =
 //follow set : ^ | , ) ] ; ->
-void Parser::PrimaryExpressionA()
+vector<myType> Parser::PrimaryExpressionA(vector <Symbol> SynchSet)
 {
     cout << "PrimaryExpressionA \n";
-
-    switch(laToken->getSymbolName())
+    vector<myType> typeVec;
+    myType type;
+    switch(laSymbol)
     {
     case SYM_LESSTHAN:
     case SYM_GREATERTHAN:
     case SYM_EQUAL:
-        RelationalOperator();
-        SimpleExpression();
+        RelationalOperator(SynchSet);
+        type = SimpleExpression(SynchSet);
+        typeVec.push_back(type);
+        return typeVec;
         break;
     case SYM_AND:
     case SYM_OR:
@@ -1871,100 +1289,56 @@ void Parser::PrimaryExpressionA()
     case SYM_RIGHTSQUARE:
     case SYM_SEMICOLON:
     case SYM_RIGHTARROW:
-        return;
+        return  typeVec;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            PrimaryExpressionA();
-        }
+        Error(__func__, "", SynchSet);
+        return typeVec;
         break;
     }
 }
 
 //first set : < > =
 //follow set : - ( ~ false true number letter
-void Parser::RelationalOperator()
+void Parser::RelationalOperator(vector <Symbol> SynchSet)
 {
     cout << "RelationalOperator \n";
 
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case SYM_LESSTHAN:
     case SYM_GREATERTHAN:
     case SYM_EQUAL:
-        match(laToken->getSymbolName());
+        match(laSymbol, __func__);
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_NOT:
-        case SYM_MINUS:
-        case KW_FALSE:
-        case KW_TRUE:
-        case NUMERAL:
-        case ID:
-        case SYM_LEFTPAREN:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            RelationalOperator();
-        }
+        Error(__func__, "Expected '<' , '>' , '='", SynchSet);
+        return;
         break;
     }
 }
 
 //first set : - ( ~ false true number letter
 //follow set : < > = ^ | , ) ] ;
-void Parser::SimpleExpression()
+myType Parser::SimpleExpression(vector <Symbol> SynchSet)
 {
     cout << "SimpleExpression \n";
 
-    if(laToken->getSymbolName() == SYM_MINUS)
+    if(laSymbol == SYM_MINUS)
     {
-        match(laToken->getSymbolName());
+        match(laSymbol, __func__);
     }
-    SimpleExpressionA();
+    return SimpleExpressionA(SynchSet);
 
 }
 
 //first set : ( ~ false true number letter
 //follow set : < > = ^ | , ) ] ; ->
-void Parser::SimpleExpressionA()
+myType Parser::SimpleExpressionA(vector <Symbol> SynchSet)
 {
     cout << "SimpleExpressionA \n";
-
-    switch(laToken->getSymbolName())
+    myType type;
+    vector<myType> typeVec;
+    switch(laSymbol)
     {
     case SYM_LEFTPAREN:
     case SYM_NOT:
@@ -1972,8 +1346,23 @@ void Parser::SimpleExpressionA()
     case KW_TRUE:
     case NUMERAL:
     case ID:
-        Term();
-        SimpleExpressionB();
+        type=Term(SynchSet);
+        typeVec =SimpleExpressionB(SynchSet);
+        if(typeVec.size()> 0 && type!= INT)
+        {
+            admin->error("A simple expression of multiple terms must be an int",3);
+        }
+        else if(typeVec.size()>0 && type == INT)
+        {
+            for(int i = 0; i<typeVec.size();i++)
+            {
+                if(typeVec[i] != INT)
+                {
+                    admin->error("The subsequent parts of a simple expression with multiple terms must be of type int.",3);
+                }
+            }
+        }
+        return type;
         break;
     case SYM_LESSTHAN:
     case SYM_GREATERTHAN:
@@ -1985,47 +1374,29 @@ void Parser::SimpleExpressionA()
     case SYM_RIGHTSQUARE:
     case SYM_SEMICOLON:
     case SYM_RIGHTARROW:
-        return;
+        return UNIVERSAL;//I have no idea what to do here, check with jesse. I'm working on it.
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            SimpleExpressionA();
-        }//follow set : < > = ^ | , ) ] ; ->
+        Error(__func__, "", SynchSet);
+        return UNIVERSAL;
     }
 }
 
 //first set : + -
 //follow set : < > = ^ | , ) ] ; ->
-void Parser::SimpleExpressionB()
+vector<myType> Parser::SimpleExpressionB(vector <Symbol> SynchSet)
 {
     cout << "SimpleExpressionB \n";
 
-    switch(laToken->getSymbolName())
+    vector<myType> typeVec;
+    myType type;
+    switch(laSymbol)
     {
     case SYM_PLUS:
     case SYM_MINUS:
-        AddingOperator();
-        SimpleExpressionA();
+        AddingOperator(SynchSet);
+        type = SimpleExpressionA(SynchSet);
+        typeVec.push_back(type);
+        return typeVec;
         break;
     case SYM_LESSTHAN:
     case SYM_GREATERTHAN:
@@ -2038,85 +1409,41 @@ void Parser::SimpleExpressionB()
     case SYM_RIGHTSQUARE:
     case SYM_LEFTPAREN:
     case SYM_SEMICOLON:
-        return;
+        return typeVec;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            SimpleExpressionB();
-        }
+        Error(__func__, "", SynchSet);
+        return typeVec;
         break;
     }
 }
 
 //first set : + -
 //follow set : + - < > = ^ | , ) ] ;
-void Parser::AddingOperator()
+void Parser::AddingOperator(vector <Symbol> SynchSet)
 {
     cout << "AddingOperator \n";
 
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case SYM_PLUS:
     case SYM_MINUS:
-        match(laToken->getSymbolName());
+        match(laSymbol, __func__);
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-        case SYM_PLUS:
-        case SYM_MINUS:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            AddingOperator();
-        }
-    }//follow set : + - < > = ^ | , ) ] ;
+        Error(__func__, "", SynchSet);
+        return;
+    }
 }
 
 //first set : ( ~ false true number letter
 //follow set : + - < > = ^ | , ) ] ;
-void Parser::Term()
+myType Parser::Term(vector <Symbol> SynchSet)
 {
     cout << "Term \n";
+    myType type;
+    vector<myType> typeVec;
 
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case SYM_LEFTPAREN:
     case SYM_NOT:
@@ -2124,52 +1451,47 @@ void Parser::Term()
     case KW_TRUE:
     case NUMERAL:
     case ID:
-        Factor();
-        TermA();
+        type =Factor(SynchSet);
+
+        typeVec = TermA(SynchSet);
+        if(typeVec.size()!=0)
+        {
+            if(type != INT)
+            {
+                admin->error("An occurence of a factor in a Term must be of type int.",3);
+            }
+            for(int i = 0; i < typeVec.size(); ++i)
+            {
+                if(typeVec[i] != INT)
+                {
+                    admin->error("An occurance of a factor in a Term must be of type int.",3);
+                }
+            }
+        }
+        return type;
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-        case SYM_PLUS:
-        case SYM_MINUS:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            Term();
-        }
+        Error(__func__, "", SynchSet);
+        return UNIVERSAL;
     }
 }
 
 //first set : * / \
 //follow set : + - < > = ^ | , ) ] ;
-void Parser::TermA()
+vector <myType> Parser::TermA(vector <Symbol> SynchSet)
 {
     cout << "TermA \n";
-
-    switch(laToken->getSymbolName())
+    vector<myType> typeVec;
+    myType type;
+    switch(laSymbol)
     {
     case SYM_MULTIPLY:
     case SYM_DIVIDE:
     case SYM_MODULO:
-        MultiplyingOperator();
-        Term();
+        MultiplyingOperator(SynchSet);
+        type = Term(SynchSet);
+        typeVec.push_back(type);
+        return typeVec;
         break;
     case SYM_PLUS:
     case SYM_MINUS:
@@ -2183,495 +1505,340 @@ void Parser::TermA()
     case SYM_RIGHTPAREN:
     case SYM_RIGHTSQUARE:
     case SYM_SEMICOLON:
-        return;
+        return typeVec;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-        case SYM_PLUS:
-        case SYM_MINUS:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            TermA();
-        }
+        Error(__func__, "", SynchSet);
+        return typeVec;
     }
 }
 
 //first set : ( ^ false true number letter
 //follow set : * / \ + - < > = ^ | , ) ] ;
-void Parser::Factor()
+myType Parser::Factor(vector <Symbol> SynchSet)
 {
     cout << "Factor \n";
-
-    switch(laToken->getSymbolName())
+    NameToken *nt;
+    bool error;
+    TableEntry te;
+    Kind tempkind;
+    myType temptype;
+    switch(laSymbol)
     {
     case NUMERAL:
+        Constant(SynchSet);
+        return INT;
+        break;
     case KW_TRUE:
+        Constant(SynchSet);
+        return BOOL;
+        break;
     case KW_FALSE:
-        ///case ID: ///AMBIGUITY ALERT !!!! For now we will send it down the variable access path
-        Constant();
+        Constant(SynchSet);
+        return BOOL;
         break;
     case ID:
-        VariableAccess();
-        break;
-    case SYM_NOT:
-        match(laToken->getSymbolName());
-        Factor();
+        nt = (NameToken*) laToken;
+        te = bt.find(nt->getPosition(), error);
+        tempkind = te.kind;
+        temptype = te.type;
+        ///erase
+        cout << "POSITION IN FACTOR : " << nt->getPosition() << " , kind : "<< tempkind << endl;
+        if(tempkind == CONSTANT)
+        {
+            Constant(SynchSet);
+        }
+        else if(tempkind == VAR | tempkind == ARR)
+        {
+            VariableAccess(SynchSet);
+        }
+        else
+        {
+            admin->error("The id being accessed is neither a variable or a constant.",3);
+        }
+        return temptype;
         break;
     case SYM_LEFTPAREN:
-        match(laToken->getSymbolName());
-        Expression();
-        bool isgood = false;
-        while(isgood == false)
+        match(laSymbol, __func__);
+        temptype =Expression(SynchSet);
+        if(laSymbol == SYM_RIGHTPAREN)
+            match(laSymbol, __func__);
+        else
         {
-
-            if(laToken->getSymbolName() == SYM_RIGHTPAREN)
-            {
-                match(laToken->getSymbolName());
-                isgood= true;
-            }
-            else
-            {
-                switch(laToken->getSymbolName())
-                {
-                case SYM_EOF :
-                case SYM_PERIOD :
-                case SYM_GUARD :
-                case KW_FI :
-                case KW_IF:
-                case KW_OD:
-                case KW_END:
-                case SYM_SEMICOLON:
-                case SYM_RIGHTPAREN:
-                case SYM_COMMA:
-                case SYM_RIGHTSQUARE:
-                case SYM_AND:
-                case SYM_OR:
-                case SYM_RIGHTARROW:
-                case SYM_LESSTHAN:
-                case SYM_GREATERTHAN:
-                case SYM_EQUAL:
-                case SYM_PLUS:
-                case SYM_MINUS:
-                case SYM_MULTIPLY:
-                case SYM_DIVIDE:
-                case SYM_MODULO:
-                    return;
-                default:
-                    Error(__func__, laToken->getSymbolName());
-                    //Factor();
-                }
-            }
+            Error(__func__, "Missing ')'", SynchSet);
         }
+        return temptype;
         break;
-
+    case SYM_NOT:
+        match(laSymbol, __func__);
+        return Factor(SynchSet);
+        break;
+    default:
+        Error(__func__, "", SynchSet);
+        return UNIVERSAL;
     }
 }
 
 //first set : * / \
 //follow set : ( ~ false true number letter
-void Parser::MultiplyingOperator()
+void Parser::MultiplyingOperator(vector <Symbol> SynchSet)
 {
     cout << "MultiplyingOperator \n";
 
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case SYM_MULTIPLY:
     case SYM_DIVIDE:
     case SYM_MODULO:
-        match(laToken->getSymbolName());
+        match(laSymbol, __func__);
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-        case SYM_PLUS:
-        case SYM_MINUS:
-        case SYM_LEFTPAREN:
-        case SYM_NOT:
-        case KW_FALSE:
-        case KW_TRUE:
-        case NUMERAL:
-        case ID:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            MultiplyingOperator();
-        }
+        Error(__func__, "Expected '*' , '/' , or '\'", SynchSet);
+        return;
     }
 }
 
 //first set : [
 //follow set : * / \ + - < > = ^ | := -> ) ] , ;
-void Parser::IndexedSelector()
+int Parser::IndexedSelector(vector <Symbol> SynchSet)
 {
     cout << "IndexedSelector \n";
-    bool isgood = false;
-    switch(laToken->getSymbolName())
+    myType type;
+    switch(laSymbol)
     {
     case SYM_LEFTSQUARE:
-        match(laToken->getSymbolName());
-        Expression();
-        while(isgood == false)
+        match(laSymbol, __func__);
+        type =Expression(SynchSet);
+        if(type != INT)
         {
-
-            if(laToken->getSymbolName() == SYM_RIGHTSQUARE)
-            {
-                match(laToken->getSymbolName());
-                isgood==true;
-            }
-            else
-            {
-                switch(laToken->getSymbolName())
-                {
-                case SYM_EOF :
-                case SYM_PERIOD :
-                case SYM_GUARD :
-                case KW_FI :
-                case KW_IF:
-                case KW_OD:
-                case KW_END:
-                case SYM_SEMICOLON:
-                case SYM_ASSIGNMENT:
-                case SYM_MULTIPLY:
-                case SYM_DIVIDE:
-                case SYM_MODULO:
-                case SYM_PLUS:
-                case SYM_MINUS:
-                case SYM_LESSTHAN:
-                case SYM_GREATERTHAN:
-                case SYM_EQUAL:
-                case SYM_AND:
-                case SYM_OR:
-                case SYM_RIGHTARROW:
-                case SYM_RIGHTPAREN:
-                case SYM_RIGHTSQUARE:
-                case SYM_COMMA:
-                    return;
-                default:
-                    Error(__func__, laToken->getSymbolName());
-                    //IndexedSelector();
-                }
-            }
+            admin->error("An indexed selector must have an int as its enclosed value",3);
+        }
+        if(laSymbol == SYM_RIGHTSQUARE)
+        {
+            match(laSymbol, __func__);
+            return 1;
+        }
+        else
+        {
+            Error(__func__, "Missing closing bracket", SynchSet);
+            return 0;
         }
         break;
-    case SYM_MULTIPLY:
-    case SYM_MODULO:
-    case SYM_DIVIDE:
-    case SYM_PLUS:
-    case SYM_MINUS:
-    case SYM_LESSTHAN:
-    case SYM_GREATERTHAN:
-    case SYM_EQUAL:
-    case SYM_AND:
-    case SYM_OR:
-    case SYM_RIGHTARROW:
-    case SYM_ASSIGNMENT:
-    case SYM_RIGHTPAREN:
-    case SYM_RIGHTSQUARE:
-    case SYM_COMMA:
-    case SYM_SEMICOLON:
-        return;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_ASSIGNMENT:
-        case SYM_MULTIPLY:
-        case SYM_DIVIDE:
-        case SYM_MODULO:
-        case SYM_PLUS:
-        case SYM_MINUS:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_RIGHTPAREN:
-        case SYM_RIGHTSQUARE:
-        case SYM_COMMA:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            IndexedSelector();
-        }
+        return 0;
+        break;
     }
 }
 
 //first set : false true number letter
 //follow set : * / \ + - < > = ^ | , ) ] ;
-void Parser::Constant()
+void Parser::Constant(vector <Symbol> SynchSet)
 {
     cout << "Constant\n";
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case NUMERAL:
-        Numeral();
+        Numeral(SynchSet);
         break;
     case KW_TRUE:
     case KW_FALSE:
-        BooleanSymbol();
+        BooleanSymbol(SynchSet);
         break;
     case ID:
-        ConstantName();
+        ConstantName(SynchSet);
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-        case SYM_PLUS:
-        case SYM_MINUS:
-        case SYM_MULTIPLY:
-        case SYM_DIVIDE:
-        case SYM_MODULO:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            Constant();
-        }
+        Error(__func__, "Expected constant", SynchSet);
+        return;
+        break;
     }
 }
 
 //first set : false true
 //follow set : * / \ + - < > = ^ | , ) ] ;
-void Parser::BooleanSymbol()
+void Parser::BooleanSymbol(vector <Symbol> SynchSet)
 {
     cout << "BooleanSymbol \n";
 
-    switch(laToken->getSymbolName())
+    switch(laSymbol)
     {
     case KW_TRUE:
     case KW_FALSE:
-        match(laToken->getSymbolName());
+        match(laSymbol, __func__);
         break;
     default:
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-        case SYM_PLUS:
-        case SYM_MINUS:
-        case SYM_MULTIPLY:
-        case SYM_DIVIDE:
-        case SYM_MODULO:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            BooleanSymbol();
-        }
+        Error(__func__, "Expected 'true' or 'false'", SynchSet);
+        return;
     }
 }
 
 //first set : number
 //follow set : * / \ + - < > = ^ | , ) ] ;
-void Parser::Numeral()
+void Parser::Numeral(vector <Symbol> SynchSet)
 {
     cout << "Numeral \n";
-    if(laToken->getSymbolName() == NUMERAL)
-        match(laToken->getSymbolName());
+    if(laSymbol == NUMERAL)
+    {
+        match(laSymbol, __func__);
+    }
     else
     {
-        switch(laToken->getSymbolName())
-        {
-        case SYM_EOF :
-        case SYM_PERIOD :
-        case SYM_GUARD :
-        case KW_FI :
-        case KW_IF:
-        case KW_OD:
-        case KW_END:
-        case SYM_SEMICOLON:
-        case SYM_RIGHTPAREN:
-        case SYM_COMMA:
-        case SYM_RIGHTSQUARE:
-        case SYM_AND:
-        case SYM_OR:
-        case SYM_RIGHTARROW:
-        case SYM_LESSTHAN:
-        case SYM_GREATERTHAN:
-        case SYM_EQUAL:
-        case SYM_PLUS:
-        case SYM_MINUS:
-        case SYM_MULTIPLY:
-        case SYM_DIVIDE:
-        case SYM_MODULO:
-            return;
-        default:
-            Error(__func__, laToken->getSymbolName());
-            Numeral();
-        }
+        Error(__func__, "Numeral error", SynchSet);
     }
 }
 
 //first set : letter
 //follow set : * / \ + - < > = ^ | :=  , ) ] ;
-void Parser::VariableName()
+void Parser::VariableName(vector <Symbol> SynchSet)
 {
     cout << "VariableName \n";
-    if(laToken->getSymbolName() == ID)
+    if(laSymbol == ID)
     {
-        match(laToken->getSymbolName());
-        //Name();
+        match(laSymbol, __func__);
     }
-
+    else
+    {
+        Error(__func__, "Variable name error", SynchSet);
+    }
 }
 
 //first set : letter
 //follow set : * / \ + - < > = ^ | , ) ] = ;
-void Parser::ConstantName()
+void Parser::ConstantName(vector <Symbol> SynchSet)
 {
     cout << "ConstantName \n";
-    if(laToken->getSymbolName() == ID)
+    if(laSymbol == ID)
     {
-        match(laToken->getSymbolName());
-        //Name();
+        match(laSymbol, __func__);
+    }
+    else
+    {
+        Error(__func__, "Constant name error", SynchSet);
     }
 }
 
 //first set : letter
 //follow set : ; begin
-void Parser::ProcedureName()
+int Parser::ProcedureName(vector <Symbol> SynchSet)
 {
     cout << "ProcedureName \n";
-    if(laToken->getSymbolName() == ID)
+    if(laSymbol == ID)
     {
-        match(laToken->getSymbolName());
-        //Name();
+        NameToken *nt = (NameToken*) laToken;
+        int position = nt->getPosition();
+        match(laSymbol, __func__);
+        cout << position << endl << endl;
+        return position;
+    }
+    else
+    {
+        Error(__func__, "Procedure name error", SynchSet);
+        return -1;
     }
 }
 
 //first set : letter
 //follow set : * / \ + - < > = ^ | :=  , ) ] ;
-void Parser::Name()
+void Parser::Name(vector <Symbol> SynchSet)
 {
     cout << "Name \n";
-    if(laToken->getSymbolName() == ID)
+    if(laSymbol == ID)
     {
-        match(laToken->getSymbolName());
-        //Name();
+        match(laSymbol, __func__);
+    }
+    else
+    {
+        Error(__func__, "Name error", SynchSet);
     }
 }
 
-
-void Parser::Error()
+void Parser::Error(const char funcname[], string errMessage, vector<Symbol> &SynchSet)
 {
-    cout << "\nError!!!" << endl;
+	if(!panic)
+	{
+		panic = true;
+		cout << "\nBegin error recovery.\n";
+		errorCount++;
 
-    errcount++;
+		admin->error(errMessage + " : " + laSymbolName() + " in " + funcname, 2);
 
-    laToken = scptr->getToken();
-    if (laToken == nullptr)
-    {
-        while(laToken == nullptr)
-        {
-            laToken = scptr->getToken();
-        }
+		//cout << "Error " << errMessage << " : " << laSymbolName() << " in " << funcname << ".\n\n";
+	}
+		//get a new symbol while
+		while(!isMember(SynchSet, laSymbol))
+		{
+			//cout << "getting new token in error\n";
+			getNextToken();
+		};
 
-    }
-    cout << "Got new token : " << SymbolTypeString[laToken->getSymbolName() - 256] << endl;
 }
 
-void Parser::Error(const char *funcname, Symbol seen)
+void Parser::match(Symbol sym, const char funcname[])
 {
-    cout << "\nError in " << funcname << " found unexpected symbol " << SymbolTypeString[seen-256] << "."<< endl;
 
-    errcount++;
-
-    laToken = scptr->getToken();
-    if (laToken == nullptr)
+    cout << "match terminal : " << laSymbolName() << " in " << funcname << endl;
+//    --panicCount;
+	if(panic)//panicCount == 0)
     {
-        while(laToken == nullptr)
-        {
-            laToken = scptr->getToken();
-        }
-
+        cout << "Panic recovered.\n\n";
+		panic = false;
     }
-    cout << "Got new token : " << SymbolTypeString[laToken->getSymbolName() - 256] << endl;
+	getNextToken();
+    cout << "Got new token : " << laSymbolName() << endl;
+
 }
 
-void Parser::match(Symbol sym)
+
+//helper funtions
+
+void Parser::addSymbol(vector<Symbol> &symSet, Symbol sym)
 {
-    cout << "match terminal : " << SymbolTypeString[sym - 256] << endl;
-    do
+    if(!isMember(symSet, sym))
+    {
+        symSet.push_back(sym);
+    }
+}
+
+bool Parser::isMember(vector<Symbol> &checkset, Symbol sym)
+{
+
+    if(std::find(checkset.begin(), checkset.end(), sym) != checkset.end())
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+
+}
+
+string Parser::laSymbolName()
+{
+	return laToken->getTokenString();
+}
+
+void Parser::getNextToken()
+{
+
+	do
     {
         laToken = scptr->getToken();
     }
     while(laToken == nullptr);
-    cout << "Got new token : " << SymbolTypeString[laToken->getSymbolName() - 256] << endl;
-}
 
-//bool Parser::isMember(){
-//
-//}
+    laSymbol = laToken->getSymbolName();
+
+	switch(laSymbol)
+	{
+	//these are all scanning errors, so they should be reported by the scanner and just ignored here.
+	case BAD_SCAN:
+	case BAD_SYM:
+	case BAD_ID:
+	case BAD_NUMERAL:
+		cout << "scanner error : " << laSymbolName() << endl;
+		getNextToken();
+	default:
+		break;
+	}
+
+}
