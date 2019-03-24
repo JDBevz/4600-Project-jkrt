@@ -22,7 +22,7 @@ NameToken.o:	NameToken.h NameToken.cpp Symbol.h
 NumberToken.o:	NumberToken.h NumberToken.cpp Symbol.h
 		$(CC) $(CFLAGS) -c NumberToken.cpp
 
-Scanner.o:	Scanner.cpp Scanner.h Token.h NameToken.h SymToken.h NumberToken.h SymbolTable.h
+Scanner.o:	Scanner.cpp Scanner.h Token.h NameToken.h SymToken.h NumberToken.h SymbolTable.h Administration.h
 		$(CC) $(CFLAGS) -c Scanner.cpp
 
 SymToken.o:	SymToken.cpp SymToken.h Symbol.h
@@ -31,11 +31,18 @@ SymToken.o:	SymToken.cpp SymToken.h Symbol.h
 Token.o:	Token.h Token.cpp
 		$(CC) $(CFLAGS) -c Token.cpp
 
-Administration.o:	Administration.h Administration.cpp Token.h Scanner.h
+Administration.o:	Administration.h Administration.cpp Token.h Scanner.h Parser.h
 		$(CC) $(CFLAGS) -c Administration.cpp
 
 SymbolTable.o:	SymbolTable.h SymbolTable.cpp
 		$(CC) $(CFLAGS) -c SymbolTable.cpp
+
+BlockTable.o: BlockTable.h BlockTable.cpp TypeKindEnum.h
+		$(CC) $(CFLAGS) -c BlockTable.cpp
+
+Parser.o: Parser.h Parser.cpp NumberToken.h Administration.h BlockTable.h TypeKindEnum.h
+	$(CC) $(CFLAGS) -c Parser.cpp
+
 
 clean:
 		$(RM) *.o *~ plc
