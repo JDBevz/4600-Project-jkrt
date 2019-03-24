@@ -359,7 +359,7 @@ TableEntry te;
         Constant(SynchSet);
         if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
         {
-            admin->error("This is an error. Ambiguous definition of constant", 3)
+            admin->error("This is an error. Ambiguous definition of constant", 3);
         }
         break;
     case KW_FALSE:
@@ -368,7 +368,7 @@ TableEntry te;
         Constant(SynchSet);
         if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
         {
-            admin->error("This is an error. Ambiguous definition of constant", 3)
+            admin->error("This is an error. Ambiguous definition of constant", 3);
         }
         break;
     case KW_TRUE:
@@ -377,7 +377,7 @@ TableEntry te;
         Constant(SynchSet);
         if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
         {
-            admin->error("This is an error. Ambiguous definition of constant", 3)
+            admin->error("This is an error. Ambiguous definition of constant", 3);
         }
         break;
     case ID:
@@ -385,14 +385,19 @@ TableEntry te;
         nt = (NameToken*) laToken;
         bool error;
         te = bt.find(nt->getPosition(),error );
-        temptype = te.type;
-        tempvalue = te.value;
-        Constant(SynchSet);
-        if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
-        {
-            admin->error("This is an error. Ambiguous definition of constant", 3)
+        if(!error){
+            temptype = te.type;
+            tempvalue = te.value;
+            Constant(SynchSet);
+            if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
+            {
+                admin->error("Unable to define constant", 3);
+            }
         }
-
+        else{
+            admin->error("Unable to define constant",3);
+            Constant(SynchSet);
+        }
         break;
     default:
     	if(isGood)
@@ -449,7 +454,7 @@ void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
         {
             if(!bt.define(varlist[i],VAR,TempType,1,0))
             {
-                admin->error("Ambiguous definition of variable", 3)
+                admin->error("Ambiguous definition of variable", 3);
             }
         }
         return;
@@ -493,7 +498,7 @@ void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
             break;
         case KW_TRUE:
             isProperArray= false;
-            admin->error("An array should have an int as the amount of variables.",3);
+            admin->error("An array should have an int as the amount of variables.",3);;
             Constant(SynchSet);
             break;
         case KW_FALSE:
@@ -505,16 +510,22 @@ void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
         case ID:
             namet = (NameToken*) laToken;
             te = bt.find(namet->getPosition(),error);
-            typeCheck = te.type;
-            if(typeCheck == INT)
-            {
-                numberInArray = te.value;
-                isProperArray = true;
+
+            if(!error){
+                typeCheck = te.type;
+                if(typeCheck == INT)
+                {
+                    numberInArray = te.value;
+                    isProperArray = true;
+                }
+                else
+                {
+                    isProperArray= false;
+                    admin->error("An array should have an int as the amount of variables.",3);
+                }
             }
-            else
-            {
-                isProperArray= false;
-                admin->error("An array should have an int as the amount of variables.",3);
+            else{
+                admin->error("Const or variable in array size not defined",3);
             }
             Constant(SynchSet);
             break;
@@ -839,20 +850,19 @@ void Parser::ProcedureStatement(vector <Symbol> SynchSet)
        int position = ProcedureName(SynchSet);
        bool error;
        TableEntry te = bt.find(position,error);
-       int tempindex = te.index;
-       Kind tempkind = te.kind;
-       if(tempindex != -1)
-       {
-            if(tempkind!= PROC)
-            {
-                admin->error("Cannot make a procedure call to something that isn't a procedure.",3);
-            }
-       }
-       else
-       {
-           admin->error("The procedure called didn't exist",3);
-       }
+       if(!error){
 
+           int tempindex = te.index;
+           Kind tempkind = te.kind;
+
+                if(tempkind!= PROC)
+                {
+                    admin->error("Cannot make a procedure call to something that isn't a procedure.",3);
+                }
+       }
+       else{
+        admin->error("The procedure was not defined",3);
+       }
     }
     else
     {
@@ -929,10 +939,6 @@ vector<myType> Parser::VariableAccessList(vector <Symbol> SynchSet)
 
     if(laSymbol == ID)
     {
-//        NameToken *nt = (NameToken*) laToken;
-//        bool error;
-//        TableEntry te = bt.find(nt->getPosition(),error);
-//        myType temptype = te.type;
         temptype = VariableAccess(SynchSet);
         typeVec.push_back(temptype);
         newVec =VariableAccessListA(SynchSet);
@@ -982,35 +988,42 @@ myType Parser::VariableAccess(vector <Symbol> SynchSet)
         NameToken *nt = (NameToken*) laToken;
         bool error;
         TableEntry te = bt.find(nt->getPosition(),error);
-        int tempindex = te.index;
-        myType temptype;
-        Kind tempKind = te.kind;
-        VariableName(SynchSet);
-        int present = IndexedSelector(SynchSet);
-        if(tempindex != -1)
-        {
-            temptype = te.type;
-        }
-        else
-        {
-            temptype = UNIVERSAL;
-        }
+        if(!error){
 
-        return temptype;
+                int tempindex = te.index;
+                myType temptype;
+                Kind tempKind = te.kind;
+                VariableName(SynchSet);
+                int present = IndexedSelector(SynchSet);
+                if(tempindex != -1)
+                {
+                    temptype = te.type;
+                }
+                else
+                {
+                    temptype = UNIVERSAL;
+                }
 
-        if(present == 1)
-        {
-            if(tempKind != ARR)
+            return temptype;
+
+            if(present == 1)
             {
-                admin->error("A variable with an indexed selector must be an array",3);
+                if(tempKind != ARR)
+                {
+                    admin->error("A variable with an indexed selector must be an array",3);
+                }
+            }
+            else
+            {
+                if(tempKind != VAR)
+                {
+                    admin->error( "A variable without an indexed selector must be a var",3);
+                }
             }
         }
-        else
-        {
-            if(tempKind != VAR)
-            {
-                admin->error( "A variable without an indexed selector must be a var",3);
-            }
+        else{
+            admin->error("The variable was not defined", 3);
+            Name(SynchSet);
         }
     }
 }
@@ -1539,23 +1552,29 @@ myType Parser::Factor(vector <Symbol> SynchSet)
     case ID:
         nt = (NameToken*) laToken;
         te = bt.find(nt->getPosition(), error);
-        tempkind = te.kind;
-        temptype = te.type;
-        ///erase
-        cout << "POSITION IN FACTOR : " << nt->getPosition() << " , kind : "<< tempkind << endl;
-        if(tempkind == CONSTANT)
-        {
-            Constant(SynchSet);
-        }
-        else if(tempkind == VAR | tempkind == ARR)
-        {
-            VariableAccess(SynchSet);
+        if(!error){
+            tempkind = te.kind;
+            temptype = te.type;
+            if(tempkind == CONSTANT)
+            {
+                Constant(SynchSet);
+            }
+            else if(tempkind == VAR | tempkind == ARR)
+            {
+                VariableAccess(SynchSet);
+            }
+            return temptype;
+//            else
+//            {
+//                admin->error("The id being accessed is undefined.",3);
+//            }
         }
         else
         {
-            admin->error("The id being accessed is neither a variable or a constant.",3);
+            admin->error("The id being accessed is undefined.",3);
+            VariableAccess(SynchSet);
         }
-        return temptype;
+
         break;
     case SYM_LEFTPAREN:
         match(laSymbol, __func__);

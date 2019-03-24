@@ -78,7 +78,7 @@ private:
     void Error(const char funcName[], Symbol expected);
     void Error(const char funcName[], string errMessage);
     void Error(const char funcName[], string errMessage, vector<Symbol> &synchSet);
-
+    void stError(const char funcName[], string errMessage, vector<Symbol> &synchSet);
 
     void match(Symbol sym);
     void match(Symbol sym, const char funcname[]);
