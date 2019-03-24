@@ -1,0 +1,20 @@
+begin
+   const n = 11; 
+   integer array A[n];
+   integer array B[true];
+   integer array C[false];
+   integer x, i; 
+   Boolean found;
+
+    proc Search
+    begin 
+        integer m;
+        i, m := 1, n;
+        found := A[i]=x;
+    end;
+
+    i := 1;
+    write B[i];
+    write C[i];
+    read x;
+end.

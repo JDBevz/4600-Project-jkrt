@@ -1,0 +1,19 @@
+begin
+   const n = 11; 
+   integer array A[n];
+   integer x, i; 
+   Boolean found;
+
+    proc Search
+    begin 
+        integer m;
+        i, m := 1, n;
+        found := A[i]=x;
+	j := 100;
+    end;
+
+    i := 1;
+    write C[i];
+    j:= 22; 
+    read x;
+end.
