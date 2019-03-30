@@ -22,12 +22,12 @@ protected:
 private:
 
     void Program(vector <Symbol> SynchSet); //start symbol
-    void Block(vector <Symbol> SynchSet);
-    void DefinitionPart(vector <Symbol> SynchSet);
+    void Block(vector <Symbol> SynchSet,int sLabel,int vLabel);
+    int DefinitionPart(vector <Symbol> SynchSet,int& nextVarStart);
     void StatementPart(vector <Symbol> SynchSet);
-    void Definition(vector <Symbol> SynchSet);
+    int Definition(vector <Symbol> SynchSet,int& nextVarStart);
     void ConstantDefinition(vector <Symbol> SynchSet);
-    void VariableDefinition(vector <Symbol> SynchSet);
+    int VariableDefinition(vector <Symbol> SynchSet,int& nextVarStart);
     void VariableDefinitionA(vector <Symbol> SynchSet, myType TempType);
     myType TypeSymbol(vector <Symbol> SynchSet);
     vector<int> VariableList(vector <Symbol> SynchSet);
@@ -46,9 +46,9 @@ private:
     myType VariableAccess(vector <Symbol> SynchSet);
     vector<myType> ExpressionList(vector <Symbol> SynchSet);
     vector<myType> ExpressionListA(vector <Symbol> SynchSet);
-    void GuardedCommand(vector <Symbol> SynchSet);
-    void GuardedCommmandList(vector <Symbol> SynchSet);
-    void GuardedCommmandListA(vector <Symbol> SynchSet);
+    void GuardedCommand(vector <Symbol> SynchSet,int& startLabel,int GoTo);
+    void GuardedCommmandList(vector <Symbol> SynchSet,int& startLabel,int GoTo);
+    void GuardedCommmandListA(vector <Symbol> SynchSet,int& startLabel,int GoTo);
     myType Expression(vector <Symbol> SynchSet);
     vector<myType> ExpressionA(vector <Symbol> SynchSet);
     void PrimaryOperator(vector <Symbol> SynchSet);
@@ -66,9 +66,9 @@ private:
     void VariableName(vector <Symbol> SynchSet);
     void VariableNameA(vector <Symbol> SynchSet);
     int IndexedSelector(vector <Symbol> SynchSet);
-    void Constant(vector <Symbol> SynchSet);
-    void BooleanSymbol(vector <Symbol> SynchSet);
-    void Numeral(vector <Symbol> SynchSet);
+    int Constant(vector <Symbol> SynchSet);
+    int BooleanSymbol(vector <Symbol> SynchSet);
+    int Numeral(vector <Symbol> SynchSet);
     void NumeralA(vector <Symbol> SynchSet);
     void ConstantName(vector <Symbol> SynchSet);
     int ProcedureName(vector <Symbol> SynchSet);

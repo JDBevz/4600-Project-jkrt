@@ -72,7 +72,7 @@ int Parser::parse()
 void Parser::Program(vector <Symbol> SynchSet)
 {
     cout << "Program\n";
-
+    int varLabel, startLabel;
     //
     if(laSymbol != KW_BEGIN)
     {
@@ -83,13 +83,16 @@ void Parser::Program(vector <Symbol> SynchSet)
     {
         admin->error("fatal error", 1);
     }
-
-    Block(SynchSet);
+    varLabel = NewLabel();
+    startLabel = NewLabel();
+    admin->emit3("PROG",varLabel,startLabel);
+    Block(SynchSet,startLabel,varLabel);
 
     bt.endBlock();
     if(laSymbol == SYM_PERIOD)
     {
         match(laSymbol, __func__);
+        admin->emit1("ENDPROG");
     }
     else
     {
@@ -100,7 +103,7 @@ void Parser::Program(vector <Symbol> SynchSet)
 
 //first set :  begin
 //follow set :  ; .
-void Parser::Block(vector <Symbol> SynchSet)
+void Parser::Block(vector <Symbol> SynchSet,int sLabel,int vLabel)
 {
     cout << "Block\n";
 
@@ -116,9 +119,11 @@ void Parser::Block(vector <Symbol> SynchSet)
     {
         Error(__func__, "Missing 'begin' at start of block", SynchSet);
     }
-
-    DefinitionPart(SynchSet);
-
+    int varLength = 0;
+    int nextVarStart = 3;
+    varLength =DefinitionPart(SynchSet,nextVarStart);
+    admin->emit3("DEFARG", vLabel, varLength);
+    admin->emit2("DEFADDR",sLabel);
     StatementPart(SynchSet);
 
 //match end
@@ -135,10 +140,10 @@ void Parser::Block(vector <Symbol> SynchSet)
 
 //first set :  const proc integer Boolean
 //follow set :  skip read write call if do name end
-void Parser::DefinitionPart(vector <Symbol> SynchSet)
+int Parser::DefinitionPart(vector <Symbol> SynchSet, int& nextVarStart)
 {
     cout << "DefinitionPart\n";
-
+    int varLength = 0;
     //add follow set to synch set
     addSymbol(SynchSet, KW_SKIP);
     addSymbol(SynchSet, KW_READ);
@@ -161,17 +166,17 @@ void Parser::DefinitionPart(vector <Symbol> SynchSet)
     case KW_PROC:
     case KW_INTEGER:
     case KW_BOOLEAN:
-        Definition(SynchSet);
+        varLength += Definition(SynchSet, nextVarStart);
         //all definitions must be followed by a semicolon
         if(laSymbol == SYM_SEMICOLON)
         {
             match(laSymbol, __func__);
-            DefinitionPart(SynchSet);
+            varLength += DefinitionPart(SynchSet,nextVarStart);
         }
         else
         {
             Error(__func__, "Missing ';' at end of Definition", SynchSet);
-            DefinitionPart(SynchSet);
+            varLength += DefinitionPart(SynchSet,nextVarStart);
         }
         break;
     //empty definition part / follow set
@@ -184,18 +189,19 @@ void Parser::DefinitionPart(vector <Symbol> SynchSet)
     case ID:
     case KW_END:
 	case SYM_EOF:
-        return;
+        return 0;
 	case SYM_SEMICOLON:
 		Error(__func__, "Blank statement", SynchSet);
 	//any unexpected or incorrect symbols
     default:
         if(panic)
         {
-            return;
+            return 0;
         }
         Error(__func__, "Unexpected symbol", SynchSet);
-        DefinitionPart(SynchSet);
+        varLength =DefinitionPart(SynchSet,nextVarStart);
     }
+    return varLength;
 
 }
 
@@ -264,10 +270,10 @@ void Parser::StatementPart(vector <Symbol> SynchSet)
 
 //first set :  const proc integer Boolean
 //follow set :  ;
-void Parser::Definition(vector <Symbol> SynchSet)
+int Parser::Definition(vector <Symbol> SynchSet,int& nextVarStart)
 {
     cout << "Definition\n";
-
+    varLength = 0;
     addSymbol(SynchSet, SYM_SEMICOLON);
 
     switch(laSymbol)
@@ -277,16 +283,17 @@ void Parser::Definition(vector <Symbol> SynchSet)
         break;
     case KW_INTEGER:
     case KW_BOOLEAN:
-        VariableDefinition(SynchSet);
+        varLength =VariableDefinition(SynchSet,nextVarStart);
         break;
     case KW_PROC:
         ProcedureDefinition(SynchSet);
         break;
     default:
         Error(__func__, "Unexpected symbol", SynchSet);
-        return;
+        return 0;
         break;
     }
+    return varLength;
 }
 
 //first set :  const
@@ -357,7 +364,7 @@ TableEntry te;
         tempvalue = numt->getValue();
         numt = nullptr;
         Constant(SynchSet);
-        if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
+        if(!bt.define(position,CONSTANT,temptype,1,tempvalue,bt.currentLevel(),0,0))
         {
             admin->error("This is an error. Ambiguous definition of constant", 3);
         }
@@ -366,7 +373,7 @@ TableEntry te;
         temptype = BOOL;
         tempvalue = 0;
         Constant(SynchSet);
-        if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
+        if(!bt.define(position,CONSTANT,temptype,1,tempvalue,bt.currentLevel(),0,0))
         {
             admin->error("This is an error. Ambiguous definition of constant", 3);
         }
@@ -375,7 +382,7 @@ TableEntry te;
         temptype = BOOL;
         tempvalue=1;
         Constant(SynchSet);
-        if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
+        if(!bt.define(position,CONSTANT,temptype,1,tempvalue,bt.currentLevel(),0,0))
         {
             admin->error("This is an error. Ambiguous definition of constant", 3);
         }
@@ -389,7 +396,7 @@ TableEntry te;
             temptype = te.type;
             tempvalue = te.value;
             Constant(SynchSet);
-            if(!bt.define(position,CONSTANT,temptype,1,tempvalue))
+            if(!bt.define(position,CONSTANT,temptype,1,tempvalue,bt.currentLevel(),0,0))
             {
                 admin->error("Unable to define constant", 3);
             }
@@ -408,10 +415,10 @@ TableEntry te;
 
 //first set :  integer boolean
 //follow set :  ;
-void Parser::VariableDefinition(vector <Symbol> SynchSet)
+int Parser::VariableDefinition(vector <Symbol> SynchSet, int& nextVarStart)
 {
     cout << "VariableDefinition\n";
-
+    varLength = 0;
     addSymbol(SynchSet, SYM_SEMICOLON);
     myType temptype;
 //type symbol
@@ -429,35 +436,38 @@ void Parser::VariableDefinition(vector <Symbol> SynchSet)
 //variable definition A
     if(laSymbol == ID | laSymbol == KW_ARRAY)
     {
-        VariableDefinitionA(SynchSet,temptype);
+       varLength = VariableDefinitionA(SynchSet,temptype, nextVarStart);
     }
     else
     {
         Error(__func__, "Incorrect variable definition", SynchSet);
         return;
     }
+    return varLength;
 }
 
 //first set :  array letter
 //follow set :  ;
-void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
+int Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType,int& nextVarStart)
 {
     cout << "VariableDefinitionA\n";
-
+    int varLength = 0;
     addSymbol(SynchSet, SYM_SEMICOLON);
     int numberInArray =0;
     vector<int> varlist;
     if(laSymbol == ID)
     {
         varlist = VariableList(SynchSet);
+        varLength = varlist.size();
         for(int i = 0; i<varlist.size();i++)
         {
-            if(!bt.define(varlist[i],VAR,TempType,1,0))
+            if(!bt.define(varlist[i],VAR,TempType,1,0,bt.currentLevel(),nextVarStart,0))
             {
                 admin->error("Ambiguous definition of variable", 3);
             }
+            nextVarStart += 1;
         }
-        return;
+        return varLength;
     }
     else if(laSymbol == KW_ARRAY)
     {
@@ -493,6 +503,7 @@ void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
         case NUMERAL:
             nt = (NumberToken*) laToken;
             numberInArray =nt->getValue();
+            varLength = numberInArray;
             Constant(SynchSet);
             isProperArray = true;
             break;
@@ -516,6 +527,7 @@ void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
                 if(typeCheck == INT)
                 {
                     numberInArray = te.value;
+                    varLength = numberInArray;
                     isProperArray = true;
                 }
                 else
@@ -531,7 +543,7 @@ void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
             break;
         default:
             Error(__func__, "", SynchSet);
-            return;
+            return varLength;
             break;
         }
 
@@ -543,11 +555,13 @@ void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
             {
                 for(int i = 0; i<varlist.size();i++)
                 {
-                    if(!bt.define(varlist[i],ARR,TempType,numberInArray,0))
+                    if(!bt.define(varlist[i],ARR,TempType,numberInArray,0,bt.currentLevel(),nextVarStart,0))
                     {
-                        admin->error("Ambiguous definition of variable",3);
+                        admin->error("Ambiguous definition of array member",3);
                     }
+                    nextVarStart += numberInArray;
                 }
+                return varLength;
             }
 
 
@@ -555,13 +569,14 @@ void Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType)
         else
         {
             Error(__func__, "", SynchSet);
-            return;
+            return 0;
         }
+        return 0;
     }
     else
     {
         Error(__func__, "", SynchSet);
-        return;
+        return varLength;
     }
 
 
@@ -648,12 +663,12 @@ void Parser::ProcedureDefinition(vector <Symbol> SynchSet)
     {
         match(laSymbol, __func__);
         int position = ProcedureName(SynchSet);
-
+        int procLabel = NewLabel();
         if(position != -1)
         {
 
 
-        if(!bt.define(position,PROC,UNIVERSAL,1,0))
+        if(!bt.define(position,PROC,UNIVERSAL,0,0,bt.currentLevel(),0, procLabel))
         {
             admin->error("Ambiguous definition of procedure",3);
         }
@@ -666,8 +681,13 @@ void Parser::ProcedureDefinition(vector <Symbol> SynchSet)
         {
             admin->error("Fatal error",1);
         }
-        Block(SynchSet);
+        int varLabel = NewLabel();
+        int startLabel = NewLabel();
+        admin->emit2("DEFADDR",procLabel);
+        admin->emit3("PROC",varLabel,startLabel);
+        Block(SynchSet, startLabel,varLabel);
         bt.endBlock();
+        admin->emit1("ENDPROC");
     }
     else
     {
@@ -741,7 +761,8 @@ void Parser::ReadStatement(vector <Symbol> SynchSet)
     if(laSymbol == KW_READ)
     {
         match(laSymbol, __func__);
-        VariableAccessList(SynchSet);
+        vector<myType> tempVect = VariableAccessList(SynchSet);
+        admin->emit2("READ",tempVect.size());
     }
     else
     {
@@ -760,7 +781,8 @@ void Parser::WriteStatement(vector <Symbol> SynchSet)
     if(laSymbol == KW_WRITE)
     {
         match(laSymbol, __func__);
-        ExpressionList(SynchSet);
+        vector<myType> typeVec=ExpressionList(SynchSet);
+        admin->emit2("WRITE", typeVec.size());
     }
     else
     {
@@ -780,6 +802,7 @@ void Parser::AssignmentStatement(vector <Symbol> SynchSet)
     if(laSymbol == ID)
     {
         typeList1 = VariableAccessList(SynchSet);
+        admin->emit1("ASSIGN",typeList1.size());
     }
     else
     {
@@ -854,7 +877,7 @@ void Parser::ProcedureStatement(vector <Symbol> SynchSet)
 
            int tempindex = te.index;
            Kind tempkind = te.kind;
-
+           admin->emit3("CALL",bt.currentLevel()-te.level,te.startAddress);
                 if(tempkind!= PROC)
                 {
                     admin->error("Cannot make a procedure call to something that isn't a procedure.",3);
@@ -876,7 +899,6 @@ void Parser::ProcedureStatement(vector <Symbol> SynchSet)
 void Parser::IfStatement(vector <Symbol> SynchSet)
 {
     cout << "IfStatement\n";
-
     if(laSymbol == KW_IF)
     {
         match(laSymbol, __func__);
@@ -886,8 +908,12 @@ void Parser::IfStatement(vector <Symbol> SynchSet)
         Error(__func__, "", SynchSet);
         return;
     }
-    GuardedCommmandList(SynchSet);
-
+    int startLabel = NewLabel();
+    int doneLabel = NewLabel();
+    GuardedCommmandList(SynchSet,startLabel,stopLabel);
+    admin->emit2("DEFADDR",startLabel);
+    admin->emit2("FI",admin->getLinecount());
+    admin->emit2("DEFADDR",doneLabel);
     if(laSymbol == KW_FI)
     {
         match(laSymbol, __func__);
@@ -914,9 +940,11 @@ void Parser::DoStatement(vector <Symbol> SynchSet)
         Error(__func__, "", SynchSet);
         return;
     }
-
-    GuardedCommmandList(SynchSet);
-
+    int startLabel = NewLabel();
+    int loopLabel =NewLabel();
+    admin->emit2("DEFADDR",loopLabel);
+    GuardedCommmandList(SynchSet,startLabel,loopLabel);
+    admin->emit2("DEFADDR",startLabel);
     if(laSymbol == KW_OD)
     {
         match(laSymbol, __func__);
@@ -995,22 +1023,16 @@ myType Parser::VariableAccess(vector <Symbol> SynchSet)
                 Kind tempKind = te.kind;
                 VariableName(SynchSet);
                 int present = IndexedSelector(SynchSet);
-                if(tempindex != -1)
-                {
-                    temptype = te.type;
-                }
-                else
-                {
-                    temptype = UNIVERSAL;
-                }
-
-            return temptype;
-
+                temptype = te.type;
+                admin->emit3("VARIABLE",bt.currentLevel()-te.level,te.displacement);
             if(present == 1)
             {
                 if(tempKind != ARR)
                 {
                     admin->error("A variable with an indexed selector must be an array",3);
+                }
+                else{
+                    admin->emit3("INDEX",te.size,admin->getLinecount());
                 }
             }
             else
@@ -1020,10 +1042,12 @@ myType Parser::VariableAccess(vector <Symbol> SynchSet)
                     admin->error( "A variable without an indexed selector must be a var",3);
                 }
             }
+            return temptype;
         }
         else{
             admin->error("The variable was not defined", 3);
-            Name(SynchSet);
+            Name(SynchSet);//why is this here??....? What the fuck?
+            return UNIVERSAL;
         }
     }
 }
@@ -1081,10 +1105,10 @@ vector<myType> Parser::ExpressionListA(vector <Symbol> SynchSet)
 
 //first set: - ( ~ false true name
 //follow set: guard fi od
-void Parser::GuardedCommand(vector <Symbol> SynchSet)
+void Parser::GuardedCommand(vector <Symbol> SynchSet,int& startLabel,int GoTo)
 {
     cout << "GuardedCommand\n";
-
+    admin->emit2("DEFADDR",startLabel);
     myType type;
     switch(laSymbol)
     {
@@ -1099,10 +1123,13 @@ void Parser::GuardedCommand(vector <Symbol> SynchSet)
         {
             admin->error("A guarded command must be of type bool",3);
         }
+        startLabel = NewLabel();
         if(laSymbol == SYM_RIGHTARROW)
         {
             match(laSymbol, __func__);
+            admin->emit2("ARROW",startLabel);
             StatementPart(SynchSet);
+            admin->emit2("BAR",GoTo);
         }
         else
         {
@@ -1119,16 +1146,16 @@ void Parser::GuardedCommand(vector <Symbol> SynchSet)
 
 //first set : - ( ~ false true name
 //follow set : fi od
-void Parser::GuardedCommmandList(vector <Symbol> SynchSet)
+void Parser::GuardedCommmandList(vector <Symbol> SynchSet,int& startLabel, int GoTo)
 {
     cout << "GuardedCommandList \n";
 
-    GuardedCommand(SynchSet);
+    GuardedCommand(SynchSet,startLabel,GoTo);
 
     switch(laSymbol)
     {
     case SYM_GUARD:
-        GuardedCommmandListA(SynchSet);
+        GuardedCommmandListA(SynchSet, startLabel,GoTo);
         break;
     case KW_FI:
     case KW_OD:
@@ -1142,7 +1169,7 @@ void Parser::GuardedCommmandList(vector <Symbol> SynchSet)
 
 //first set : []
 //follow set : fi od
-void Parser::GuardedCommmandListA(vector <Symbol> SynchSet)
+void Parser::GuardedCommmandListA(vector <Symbol> SynchSet,int& startLabel, int GoTo)
 {
     cout << "GuardedCommandListA \n";
 
@@ -1150,7 +1177,7 @@ void Parser::GuardedCommmandListA(vector <Symbol> SynchSet)
     {
     case SYM_GUARD:
         match(laSymbol, __func__);
-        GuardedCommmandList(SynchSet);
+        GuardedCommmandList(SynchSet,startLabel,GoTo);
         break;
     case KW_FI:
     case KW_OD:
@@ -1214,7 +1241,7 @@ vector<myType> Parser::ExpressionA(vector <Symbol> SynchSet)
     {
     case SYM_AND:
     case SYM_OR:
-        PrimaryOperator(SynchSet);
+        Symbol tempSym =PrimaryOperator(SynchSet);
         type = PrimaryExpression(SynchSet);
         typeVec.push_back(type);
         return typeVec;
@@ -1239,7 +1266,11 @@ void Parser::PrimaryOperator(vector <Symbol> SynchSet)
     switch(laSymbol)
     {
     case SYM_AND:
+        admin->emit1("AND");
+        match(laSymbol, __func__);
+        break;
     case SYM_OR:
+        admin->emit1("OR");
         match(laSymbol, __func__);
         break;
     default:
@@ -1319,8 +1350,15 @@ void Parser::RelationalOperator(vector <Symbol> SynchSet)
     switch(laSymbol)
     {
     case SYM_LESSTHAN:
+        admin->emit1("LESS");
+        match(laSymbol, __func__);
+        break;
     case SYM_GREATERTHAN:
+        admin->emit1("GREATER");
+        match(laSymbol, __func__);
+        break;
     case SYM_EQUAL:
+        admin->emit1("EQUAL");
         match(laSymbol, __func__);
         break;
     default:
@@ -1439,7 +1477,11 @@ void Parser::AddingOperator(vector <Symbol> SynchSet)
     switch(laSymbol)
     {
     case SYM_PLUS:
+        admin->emit1("ADD");
+        match(laSymbol, __func__);
+        break;
     case SYM_MINUS:
+        admin->emit1("SUBTRACT");
         match(laSymbol, __func__);
         break;
     default:
@@ -1535,18 +1577,19 @@ myType Parser::Factor(vector <Symbol> SynchSet)
     TableEntry te;
     Kind tempkind;
     myType temptype;
+    int constValue;
     switch(laSymbol)
     {
     case NUMERAL:
-        Constant(SynchSet);
+        constValue =Constant(SynchSet);
         return INT;
         break;
     case KW_TRUE:
-        Constant(SynchSet);
+        constValue=Constant(SynchSet);
         return BOOL;
         break;
     case KW_FALSE:
-        Constant(SynchSet);
+        constValue =Constant(SynchSet);
         return BOOL;
         break;
     case ID:
@@ -1557,11 +1600,15 @@ myType Parser::Factor(vector <Symbol> SynchSet)
             temptype = te.type;
             if(tempkind == CONSTANT)
             {
+
                 Constant(SynchSet);
+                admin->emit2("CONSTANT",te.value);
+
             }
             else if(tempkind == VAR | tempkind == ARR)
             {
                 VariableAccess(SynchSet);
+                admin->emit1("VALUE");
             }
             return temptype;
 //            else
@@ -1589,6 +1636,7 @@ myType Parser::Factor(vector <Symbol> SynchSet)
         break;
     case SYM_NOT:
         match(laSymbol, __func__);
+        admin->emit1("NOT");
         return Factor(SynchSet);
         break;
     default:
@@ -1606,8 +1654,15 @@ void Parser::MultiplyingOperator(vector <Symbol> SynchSet)
     switch(laSymbol)
     {
     case SYM_MULTIPLY:
+        admin->emit1("MULTIPLY");
+        match(laSymbol, __func__);
+        break;
     case SYM_DIVIDE:
+        admin->emit("DIVIDE");
+        match(laSymbol, __func__);
+        break;
     case SYM_MODULO:
+        admin->emit("MODULO");
         match(laSymbol, __func__);
         break;
     default:
@@ -1650,39 +1705,45 @@ int Parser::IndexedSelector(vector <Symbol> SynchSet)
 
 //first set : false true number letter
 //follow set : * / \ + - < > = ^ | , ) ] ;
-void Parser::Constant(vector <Symbol> SynchSet)
+int Parser::Constant(vector <Symbol> SynchSet)
 {
     cout << "Constant\n";
+    int constVal = 0;
     switch(laSymbol)
     {
     case NUMERAL:
-        Numeral(SynchSet);
+        constVal =Numeral(SynchSet);
         break;
     case KW_TRUE:
     case KW_FALSE:
-        BooleanSymbol(SynchSet);
+        constVal =BooleanSymbol(SynchSet);
         break;
     case ID:
         ConstantName(SynchSet);
         break;
     default:
         Error(__func__, "Expected constant", SynchSet);
-        return;
+        return 0;
         break;
     }
+    return constVal;
 }
 
 //first set : false true
 //follow set : * / \ + - < > = ^ | , ) ] ;
-void Parser::BooleanSymbol(vector <Symbol> SynchSet)
+int Parser::BooleanSymbol(vector <Symbol> SynchSet)
 {
     cout << "BooleanSymbol \n";
 
     switch(laSymbol)
     {
     case KW_TRUE:
+        match(laSymbol, __func__);
+        return 1;
+        break;
     case KW_FALSE:
         match(laSymbol, __func__);
+        return 0;
         break;
     default:
         Error(__func__, "Expected 'true' or 'false'", SynchSet);
@@ -1692,12 +1753,15 @@ void Parser::BooleanSymbol(vector <Symbol> SynchSet)
 
 //first set : number
 //follow set : * / \ + - < > = ^ | , ) ] ;
-void Parser::Numeral(vector <Symbol> SynchSet)
+int Parser::Numeral(vector <Symbol> SynchSet)
 {
     cout << "Numeral \n";
+    NumberToken *nt = (NumberToken*) laToken;
+    int val = nt->getValue();
     if(laSymbol == NUMERAL)
     {
         match(laSymbol, __func__);
+        return val;
     }
     else
     {
