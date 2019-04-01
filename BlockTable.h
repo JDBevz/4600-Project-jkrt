@@ -9,11 +9,17 @@ typedef struct TableEntry{
 
     Kind kind = NONE; //array, constant, variable, procedure
 
-    int size = 0;   //only for array
+    int size = 0;   //only for arrays
 
     myType type = UNIVERSAL; //Boolean, integer, Universal
 
     int value = 0;  //value of named constants
+
+    int displacement = 0; //displacement from the base address of the activation record where the variable exists
+
+    int startAddress = 0; //for procedures, the address of the first executable instruction
+
+    int level = 0;
 };
 
 class BlockTable {
@@ -30,6 +36,9 @@ class BlockTable {
         //if index does not exist and return true
         //return false otherwise
         bool define(int index, Kind kind, myType type, int nsize, int nvalue);
+
+        //define with added fields for code generation
+        bool define(int index, Kind kind, myType type, int nsize, int nvalue, int level, int displacement, int startLabel);
 
         TableEntry find(int index, bool &error);
 

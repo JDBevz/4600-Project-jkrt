@@ -1,5 +1,3 @@
-//Author: Thomas Richardson
-
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -8,13 +6,15 @@
 #include "Token.h"
 #include "Scanner.h"
 #include "Parser.h"
+#include "Assembler.h"
+#include "interp.h"
 
 using namespace std;
 
 int main(int argc, char* argv[])
 {
-    ifstream ifs;
-    ofstream ofs;
+    ifstream ifs, ifs2;
+    ofstream ofs, ofs2, ofs3;
 
     if(argc != 3)
     {
@@ -34,8 +34,24 @@ int main(int argc, char* argv[])
     pa.setAdmin(admin);
     sc.setAdmin(admin);
 
-    admin.compile();
+    int compileStatus = admin.compile();
 
-    cout << "\n\nDONE";
+    //erase open output file on error in input program
+    if(compileStatus != 0){
+        ofs.close();
+        ofs.open(argv[2], ofstream::out);
+    }
+
+    ofs.close();
+    ifs.close();
+//    ifs2.open(argv[2], ifstream::in);
+//    ofs2.open("assemblerOutputPass1.txt", ofstream::out);
+//    Assembler as(ifs2,ofs2);
+//    as.firstPass();
+//    ifs2.close();
+//    ifs2.open(argv[2], ifstream::in);
+//    as.secondPass();
+
+    cout << "\n\nDONE COMPILATION\n\n";
 	return 0;
 }

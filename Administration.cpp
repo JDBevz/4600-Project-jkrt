@@ -16,7 +16,7 @@ Administration::Administration(ifstream& in, ofstream &out, Scanner &sc, Parser 
     scannerptr = &sc;
     parserptr = &pa;
 
-    lineNo = 0;
+    lineNo = 1;
     errorCount = 0;
 };
 
@@ -39,7 +39,7 @@ int Administration::compile()
     }
 
     int parseStatus = parserptr->parse();
-    lineNo++;
+
     cout << "Parsing complete with " << errorCount << " errors, and " << lineNo << " lines " << endl;
 
     return parseStatus;
@@ -117,11 +117,50 @@ int Administration::scan()
     return 0;
 }
 
+void Administration::emit1(string OP_CODE)
+{
+    if(!errFlag)
+    {
+        *outputfileptr << OP_CODE << endl;
+         cout << "EMIT " << OP_CODE << endl;
+    }
+}
+
+void Administration::emit2(string OP_CODE, int arg1)
+{
+    if(!errFlag)
+    {
+        *outputfileptr << OP_CODE << endl << arg1 << endl;
+         cout << "EMIT " << OP_CODE << endl << arg1 << endl;
+    }
+}
+
+void Administration::emit3(string OP_CODE, int arg1, int arg2)
+{
+    if(!errFlag)
+    {
+        *outputfileptr << OP_CODE << endl << arg1 << endl << arg2 << endl;
+         cout << "EMIT " << OP_CODE << endl << arg1 << endl << arg2 << endl;
+    }
+}
+
 void Administration::error(string text, int typeFlag)
 {
+
+    errFlag = true;
+    if(typeFlag == 1)
+    {
+        cout << "Fatal error : " << text << "\nStopping Parsing" << endl;
+        outputfileptr->close();
+        inputfileptr->close();
+        exit(EXIT_FAILURE);
+    }
+
     if(errorCount < MAXERRORS){
-    cout << "On line " << lineNo+1 << " Error: " << text << "\n";
-    *outputfileptr << "On line " << lineNo+1 << " error : " << text << ".\n";
+
+
+    cout << "On line " << lineNo << " Error: " << text << "\n";
+    //*outputfileptr << "On line " << lineNo << " error : " << text << ".\n";
     errorCount++;
     }
 }

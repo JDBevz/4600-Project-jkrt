@@ -28,7 +28,7 @@ private:
     int Definition(vector <Symbol> SynchSet,int& nextVarStart);
     void ConstantDefinition(vector <Symbol> SynchSet);
     int VariableDefinition(vector <Symbol> SynchSet,int& nextVarStart);
-    void VariableDefinitionA(vector <Symbol> SynchSet, myType TempType);
+    int VariableDefinitionA(vector <Symbol> SynchSet, myType TempType, int& nextVarStart);
     myType TypeSymbol(vector <Symbol> SynchSet);
     vector<int> VariableList(vector <Symbol> SynchSet);
     vector<int> VariableListA(vector <Symbol> SynchSet);
@@ -85,6 +85,7 @@ private:
 
     void addSymbol(vector<Symbol> &symSet, Symbol sym);
 
+    int NewLabel();
 	//checks for symbol membership in a given set. Used for checking synchsets
     bool isMember(vector<Symbol> &checkset, Symbol sym);
 
@@ -102,6 +103,8 @@ private:
     bool panic;
     int panicCount, errorCount;
     BlockTable bt;
+
+    int labelNum;
 };
 
 #endif // PARSER_H

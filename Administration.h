@@ -22,11 +22,6 @@ class Administration
 {
   public:
 
-	//set up input and output files for scanning
-//    Administration(ifstream& in, ofstream& out);
-
-//	Administration(ifstream& in, ofstream &out, Scanner &sc);
-//
 	Administration(ifstream& in, ofstream &out, Scanner &sc, Parser &pa);
 
 	//destructor
@@ -47,6 +42,11 @@ class Administration
 
 	int getLinecount(){return lineNo;};
 
+	void emit1(string OP_CODE);
+	void emit2(string OP_CODE, int arg1);
+	void emit3(string OP_CODE, int arg1, int arg2);
+	void emitEnd(string OP_CODE);
+
 	private:
 	//output file
 	ofstream *outputfileptr;
@@ -64,6 +64,8 @@ class Administration
 
 	//report error only if correct line is true; prevents multiple/redundant error/line
 	bool correctline;
+
+	bool errFlag = false;
 
 	//count the number of errors
 	int errorCount;

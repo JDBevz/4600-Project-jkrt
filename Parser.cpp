@@ -12,7 +12,7 @@ Author : Jesse Bevans, Kevin Watchuk
 #include "Parser.h"
 #include <iostream>
 #include "NumberToken.h"
-
+#include "Assembler.h"
 
 using namespace std;
 
@@ -26,6 +26,7 @@ Parser::Parser(Scanner& sc)
     panicCount = 0;
     errorCount = 0;
     bt=BlockTable();
+    labelNum = 0;
 }
 
 Parser::~Parser()
@@ -59,7 +60,6 @@ int Parser::parse()
 
 	if(laSymbol == SYM_EOF)
 	{
-		cout << "EOF reached.\n";
         return errorCount;
 	}
 
@@ -71,7 +71,7 @@ int Parser::parse()
 //synch set : .
 void Parser::Program(vector <Symbol> SynchSet)
 {
-    cout << "Program\n";
+    /// cout << "Program\n";
     int varLabel, startLabel;
     //
     if(laSymbol != KW_BEGIN)
@@ -105,7 +105,7 @@ void Parser::Program(vector <Symbol> SynchSet)
 //follow set :  ; .
 void Parser::Block(vector <Symbol> SynchSet,int sLabel,int vLabel)
 {
-    cout << "Block\n";
+    /// cout << "Block\n";
 
     //add follow set to synch set
     addSymbol(SynchSet, SYM_PERIOD);
@@ -142,7 +142,7 @@ void Parser::Block(vector <Symbol> SynchSet,int sLabel,int vLabel)
 //follow set :  skip read write call if do name end
 int Parser::DefinitionPart(vector <Symbol> SynchSet, int& nextVarStart)
 {
-    cout << "DefinitionPart\n";
+    /// cout << "DefinitionPart\n";
     int varLength = 0;
     //add follow set to synch set
     addSymbol(SynchSet, KW_SKIP);
@@ -209,7 +209,7 @@ int Parser::DefinitionPart(vector <Symbol> SynchSet, int& nextVarStart)
 //follow set :  [] fi od end
 void Parser::StatementPart(vector <Symbol> SynchSet)
 {
-    cout << "StatementPart\n";
+    /// cout << "StatementPart\n";
 
     //add follow set to synch set
     addSymbol(SynchSet, SYM_GUARD);
@@ -272,8 +272,8 @@ void Parser::StatementPart(vector <Symbol> SynchSet)
 //follow set :  ;
 int Parser::Definition(vector <Symbol> SynchSet,int& nextVarStart)
 {
-    cout << "Definition\n";
-    varLength = 0;
+    /// cout << "Definition\n";
+    int varLength = 0;
     addSymbol(SynchSet, SYM_SEMICOLON);
 
     switch(laSymbol)
@@ -300,7 +300,7 @@ int Parser::Definition(vector <Symbol> SynchSet,int& nextVarStart)
 //follow set :  ;
 void Parser::ConstantDefinition(vector <Symbol> SynchSet)
 {
-    cout << "ConstantDefinition\n";
+    /// cout << "ConstantDefinition\n";
 
     bool isGood = true;
 
@@ -329,8 +329,7 @@ void Parser::ConstantDefinition(vector <Symbol> SynchSet)
         NameToken *nt = (NameToken*)laToken;
         position = nt->getPosition();
         nt = nullptr;
-        ///
-        cout << position << endl;
+        /// cout << position << endl;
 
         ConstantName(SynchSet);
     }
@@ -417,8 +416,8 @@ TableEntry te;
 //follow set :  ;
 int Parser::VariableDefinition(vector <Symbol> SynchSet, int& nextVarStart)
 {
-    cout << "VariableDefinition\n";
-    varLength = 0;
+    /// cout << "VariableDefinition\n";
+    int varLength = 0;
     addSymbol(SynchSet, SYM_SEMICOLON);
     myType temptype;
 //type symbol
@@ -430,7 +429,7 @@ int Parser::VariableDefinition(vector <Symbol> SynchSet, int& nextVarStart)
         break;
     default:
         Error(__func__, "", SynchSet);
-        return;
+        return 0;
     }
 
 //variable definition A
@@ -441,7 +440,7 @@ int Parser::VariableDefinition(vector <Symbol> SynchSet, int& nextVarStart)
     else
     {
         Error(__func__, "Incorrect variable definition", SynchSet);
-        return;
+        return 0;
     }
     return varLength;
 }
@@ -450,7 +449,7 @@ int Parser::VariableDefinition(vector <Symbol> SynchSet, int& nextVarStart)
 //follow set :  ;
 int Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType,int& nextVarStart)
 {
-    cout << "VariableDefinitionA\n";
+    /// cout << "VariableDefinitionA\n";
     int varLength = 0;
     addSymbol(SynchSet, SYM_SEMICOLON);
     int numberInArray =0;
@@ -481,7 +480,7 @@ int Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType,int& ne
         else
         {
             Error(__func__, "", SynchSet);
-            return;
+            return 0;
         }
 
         if(laSymbol == SYM_LEFTSQUARE)
@@ -491,7 +490,7 @@ int Parser::VariableDefinitionA(vector <Symbol> SynchSet,myType TempType,int& ne
         else
         {
             Error(__func__, "", SynchSet);
-            return;
+            return 0;
         }
         NumberToken *nt;
         NameToken *namet;
@@ -604,7 +603,7 @@ myType Parser::TypeSymbol(vector <Symbol> SynchSet)
 //follow set :   := [ ;
 vector<int> Parser::VariableList(vector <Symbol> SynchSet)
 {
-    cout << "VariableList\n";
+    /// cout << "VariableList\n";
 
     vector<int> positionVec;
     vector<int> Vec;
@@ -700,7 +699,7 @@ void Parser::ProcedureDefinition(vector <Symbol> SynchSet)
 //follow set : ;
 void Parser::Statement(vector <Symbol> SynchSet)
 {
-    cout << "Statement\n";
+    /// cout << "Statement\n";
 
     switch(laSymbol)
     {
@@ -735,7 +734,7 @@ void Parser::Statement(vector <Symbol> SynchSet)
 //follow set : ;
 void Parser::EmptyStatement(vector <Symbol> SynchSet)
 {
-    cout << "EmptyStatement\n";
+    /// cout << "EmptyStatement\n";
     SynchSet.push_back(SYM_SEMICOLON);
 
     if(laSymbol == KW_SKIP)
@@ -756,7 +755,7 @@ void Parser::EmptyStatement(vector <Symbol> SynchSet)
 //follow set : ;
 void Parser::ReadStatement(vector <Symbol> SynchSet)
 {
-    cout << "ReadStatement\n";
+    /// cout << "ReadStatement\n";
 
     if(laSymbol == KW_READ)
     {
@@ -776,7 +775,7 @@ void Parser::ReadStatement(vector <Symbol> SynchSet)
 //follow set : ;
 void Parser::WriteStatement(vector <Symbol> SynchSet)
 {
-    cout << "WriteStatement \n";
+    /// cout << "WriteStatement \n";
 
     if(laSymbol == KW_WRITE)
     {
@@ -795,14 +794,13 @@ void Parser::WriteStatement(vector <Symbol> SynchSet)
 //follow set : ;
 void Parser::AssignmentStatement(vector <Symbol> SynchSet)
 {
-    cout << "AssignmentStatement  \n";
+    /// cout << "AssignmentStatement  \n";
 //variable access list
     vector<myType> typeList1;
     vector<myType> typeList2;
     if(laSymbol == ID)
     {
         typeList1 = VariableAccessList(SynchSet);
-        admin->emit1("ASSIGN",typeList1.size());
     }
     else
     {
@@ -819,6 +817,7 @@ void Parser::AssignmentStatement(vector <Symbol> SynchSet)
         Error(__func__, "expected ':=' in assignment statement", SynchSet);
         return;
     }
+
 //Expression - ( ~ false true number letter
     switch(laSymbol)
     {
@@ -836,6 +835,8 @@ void Parser::AssignmentStatement(vector <Symbol> SynchSet)
     }
     if(typeList1.size()== typeList2.size())
     {
+        admin->emit2("ASSIGN", typeList1.size());
+
         for(int i = 0; i<typeList1.size();i++)
         {
             if(typeList1[i] != typeList2[i])
@@ -856,7 +857,7 @@ void Parser::AssignmentStatement(vector <Symbol> SynchSet)
 //follow set : ;
 void Parser::ProcedureStatement(vector <Symbol> SynchSet)
 {
-    cout << "ProcedureStatement\n";
+    /// cout << "ProcedureStatement\n";
     if(laSymbol == KW_CALL)
     {
         match(laSymbol, __func__);
@@ -898,7 +899,7 @@ void Parser::ProcedureStatement(vector <Symbol> SynchSet)
 //follow set : ;
 void Parser::IfStatement(vector <Symbol> SynchSet)
 {
-    cout << "IfStatement\n";
+    /// cout << "IfStatement\n";
     if(laSymbol == KW_IF)
     {
         match(laSymbol, __func__);
@@ -910,7 +911,7 @@ void Parser::IfStatement(vector <Symbol> SynchSet)
     }
     int startLabel = NewLabel();
     int doneLabel = NewLabel();
-    GuardedCommmandList(SynchSet,startLabel,stopLabel);
+    GuardedCommmandList(SynchSet,startLabel,doneLabel);
     admin->emit2("DEFADDR",startLabel);
     admin->emit2("FI",admin->getLinecount());
     admin->emit2("DEFADDR",doneLabel);
@@ -929,7 +930,7 @@ void Parser::IfStatement(vector <Symbol> SynchSet)
 //follow set : ;
 void Parser::DoStatement(vector <Symbol> SynchSet)
 {
-    cout << "DoStatement\n";
+    /// cout << "DoStatement\n";
 
     if(laSymbol == KW_DO)
     {
@@ -960,7 +961,7 @@ void Parser::DoStatement(vector <Symbol> SynchSet)
 //follow set : := ;
 vector<myType> Parser::VariableAccessList(vector <Symbol> SynchSet)
 {
-    cout << "VariableAccessList\n";
+    /// cout << "VariableAccessList\n";
     vector<myType> typeVec;
     vector<myType> newVec;
     myType temptype;
@@ -985,7 +986,7 @@ vector<myType> Parser::VariableAccessList(vector <Symbol> SynchSet)
 //follow set : := ;
 vector<myType> Parser::VariableAccessListA(vector <Symbol> SynchSet)
 {
-    cout << "VariableAccessListA\n";
+    /// cout << "VariableAccessListA\n";
     vector<myType> typeVec;
     switch(laSymbol)
     {
@@ -1009,7 +1010,7 @@ vector<myType> Parser::VariableAccessListA(vector <Symbol> SynchSet)
 //follow set : * / \ + - < > = ^ | := ( [ , ;
 myType Parser::VariableAccess(vector <Symbol> SynchSet)
 {
-    cout << "VariableAccess \n";
+    /// cout << "VariableAccess \n";
     myType type;
     if(laSymbol == ID)
     {
@@ -1022,9 +1023,10 @@ myType Parser::VariableAccess(vector <Symbol> SynchSet)
                 myType temptype;
                 Kind tempKind = te.kind;
                 VariableName(SynchSet);
-                int present = IndexedSelector(SynchSet);
                 temptype = te.type;
-                admin->emit3("VARIABLE",bt.currentLevel()-te.level,te.displacement);
+                admin->emit3("VARIABLE", bt.currentLevel()-te.level,te.displacement);
+                int present = IndexedSelector(SynchSet);
+
             if(present == 1)
             {
                 if(tempKind != ARR)
@@ -1046,7 +1048,7 @@ myType Parser::VariableAccess(vector <Symbol> SynchSet)
         }
         else{
             admin->error("The variable was not defined", 3);
-            Name(SynchSet);//why is this here??....? What the fuck?
+            Name(SynchSet);
             return UNIVERSAL;
         }
     }
@@ -1056,7 +1058,7 @@ myType Parser::VariableAccess(vector <Symbol> SynchSet)
 //follow set : ;
 vector<myType> Parser::ExpressionList(vector <Symbol> SynchSet)
 {
-    cout << "ExpressionList \n";
+    /// cout << "ExpressionList \n";
 
     vector<myType> typeVec;
     myType type;
@@ -1087,7 +1089,7 @@ vector<myType> Parser::ExpressionList(vector <Symbol> SynchSet)
 //follow set : ;
 vector<myType> Parser::ExpressionListA(vector <Symbol> SynchSet)
 {
-    cout << "ExpressionListA \n";
+    /// cout << "ExpressionListA \n";
     vector<myType> newVec;
     switch(laSymbol)
     {
@@ -1107,7 +1109,7 @@ vector<myType> Parser::ExpressionListA(vector <Symbol> SynchSet)
 //follow set: guard fi od
 void Parser::GuardedCommand(vector <Symbol> SynchSet,int& startLabel,int GoTo)
 {
-    cout << "GuardedCommand\n";
+    /// cout << "GuardedCommand\n";
     admin->emit2("DEFADDR",startLabel);
     myType type;
     switch(laSymbol)
@@ -1148,7 +1150,7 @@ void Parser::GuardedCommand(vector <Symbol> SynchSet,int& startLabel,int GoTo)
 //follow set : fi od
 void Parser::GuardedCommmandList(vector <Symbol> SynchSet,int& startLabel, int GoTo)
 {
-    cout << "GuardedCommandList \n";
+    /// cout << "GuardedCommandList \n";
 
     GuardedCommand(SynchSet,startLabel,GoTo);
 
@@ -1171,7 +1173,7 @@ void Parser::GuardedCommmandList(vector <Symbol> SynchSet,int& startLabel, int G
 //follow set : fi od
 void Parser::GuardedCommmandListA(vector <Symbol> SynchSet,int& startLabel, int GoTo)
 {
-    cout << "GuardedCommandListA \n";
+    /// cout << "GuardedCommandListA \n";
 
     switch(laSymbol)
     {
@@ -1192,7 +1194,7 @@ void Parser::GuardedCommmandListA(vector <Symbol> SynchSet,int& startLabel, int 
 //follow set : , ) ] ;
 myType Parser::Expression(vector <Symbol> SynchSet)
 {
-    cout << "Expression \n";
+    /// cout << "Expression \n";
 
     myType type;
     vector<myType> typeVec;
@@ -1234,14 +1236,15 @@ myType Parser::Expression(vector <Symbol> SynchSet)
 //follow set : , -> ) ] ;
 vector<myType> Parser::ExpressionA(vector <Symbol> SynchSet)
 {
-    cout << "ExpressionA \n";
+    /// cout << "ExpressionA \n";
     vector<myType> typeVec;
     myType type;
     switch(laSymbol)
     {
     case SYM_AND:
     case SYM_OR:
-        Symbol tempSym =PrimaryOperator(SynchSet);
+        //Symbol tempSym =
+        PrimaryOperator(SynchSet);
         type = PrimaryExpression(SynchSet);
         typeVec.push_back(type);
         return typeVec;
@@ -1262,7 +1265,7 @@ vector<myType> Parser::ExpressionA(vector <Symbol> SynchSet)
 //follow set : - ( ~ false true number letter
 void Parser::PrimaryOperator(vector <Symbol> SynchSet)
 {
-    cout << "PrimaryOperator \n";
+    /// cout << "PrimaryOperator \n";
     switch(laSymbol)
     {
     case SYM_AND:
@@ -1275,15 +1278,16 @@ void Parser::PrimaryOperator(vector <Symbol> SynchSet)
         break;
     default:
         Error(__func__, "Expected '^' or '|'", SynchSet);
-        return;
+        break;
     }
+    return;
 }
 
 //first set : - ( ~ false true number letter
 //follow set : ^ | , ) ] ;
 myType Parser::PrimaryExpression(vector <Symbol> SynchSet)
 {
-    cout << "PrimaryExpression \n";
+    /// cout << "PrimaryExpression \n";
     myType type;
     vector<myType> typeVec;
     switch(laSymbol)
@@ -1313,7 +1317,7 @@ myType Parser::PrimaryExpression(vector <Symbol> SynchSet)
 //follow set : ^ | , ) ] ; ->
 vector<myType> Parser::PrimaryExpressionA(vector <Symbol> SynchSet)
 {
-    cout << "PrimaryExpressionA \n";
+    /// cout << "PrimaryExpressionA \n";
     vector<myType> typeVec;
     myType type;
     switch(laSymbol)
@@ -1345,7 +1349,7 @@ vector<myType> Parser::PrimaryExpressionA(vector <Symbol> SynchSet)
 //follow set : - ( ~ false true number letter
 void Parser::RelationalOperator(vector <Symbol> SynchSet)
 {
-    cout << "RelationalOperator \n";
+    /// cout << "RelationalOperator \n";
 
     switch(laSymbol)
     {
@@ -1372,7 +1376,7 @@ void Parser::RelationalOperator(vector <Symbol> SynchSet)
 //follow set : < > = ^ | , ) ] ;
 myType Parser::SimpleExpression(vector <Symbol> SynchSet)
 {
-    cout << "SimpleExpression \n";
+    /// cout << "SimpleExpression \n";
 
     if(laSymbol == SYM_MINUS)
     {
@@ -1386,7 +1390,7 @@ myType Parser::SimpleExpression(vector <Symbol> SynchSet)
 //follow set : < > = ^ | , ) ] ; ->
 myType Parser::SimpleExpressionA(vector <Symbol> SynchSet)
 {
-    cout << "SimpleExpressionA \n";
+    /// cout << "SimpleExpressionA \n";
     myType type;
     vector<myType> typeVec;
     switch(laSymbol)
@@ -1425,7 +1429,7 @@ myType Parser::SimpleExpressionA(vector <Symbol> SynchSet)
     case SYM_RIGHTSQUARE:
     case SYM_SEMICOLON:
     case SYM_RIGHTARROW:
-        return UNIVERSAL;//I have no idea what to do here, check with jesse. I'm working on it.
+        return UNIVERSAL;
     default:
         Error(__func__, "", SynchSet);
         return UNIVERSAL;
@@ -1436,17 +1440,24 @@ myType Parser::SimpleExpressionA(vector <Symbol> SynchSet)
 //follow set : < > = ^ | , ) ] ; ->
 vector<myType> Parser::SimpleExpressionB(vector <Symbol> SynchSet)
 {
-    cout << "SimpleExpressionB \n";
+    /// cout << "SimpleExpressionB \n";
 
     vector<myType> typeVec;
     myType type;
     switch(laSymbol)
     {
     case SYM_PLUS:
+        AddingOperator(SynchSet);
+        type = SimpleExpressionA(SynchSet);
+        typeVec.push_back(type);
+        admin->emit1("ADD");
+        return typeVec;
+        break;
     case SYM_MINUS:
         AddingOperator(SynchSet);
         type = SimpleExpressionA(SynchSet);
         typeVec.push_back(type);
+        admin->emit1("SUBTRACT");
         return typeVec;
         break;
     case SYM_LESSTHAN:
@@ -1472,16 +1483,15 @@ vector<myType> Parser::SimpleExpressionB(vector <Symbol> SynchSet)
 //follow set : + - < > = ^ | , ) ] ;
 void Parser::AddingOperator(vector <Symbol> SynchSet)
 {
-    cout << "AddingOperator \n";
+    /// cout << "AddingOperator \n";
 
     switch(laSymbol)
     {
     case SYM_PLUS:
-        admin->emit1("ADD");
         match(laSymbol, __func__);
         break;
     case SYM_MINUS:
-        admin->emit1("SUBTRACT");
+
         match(laSymbol, __func__);
         break;
     default:
@@ -1494,7 +1504,7 @@ void Parser::AddingOperator(vector <Symbol> SynchSet)
 //follow set : + - < > = ^ | , ) ] ;
 myType Parser::Term(vector <Symbol> SynchSet)
 {
-    cout << "Term \n";
+    /// cout << "Term \n";
     myType type;
     vector<myType> typeVec;
 
@@ -1535,7 +1545,7 @@ myType Parser::Term(vector <Symbol> SynchSet)
 //follow set : + - < > = ^ | , ) ] ;
 vector <myType> Parser::TermA(vector <Symbol> SynchSet)
 {
-    cout << "TermA \n";
+    /// cout << "TermA \n";
     vector<myType> typeVec;
     myType type;
     switch(laSymbol)
@@ -1571,25 +1581,29 @@ vector <myType> Parser::TermA(vector <Symbol> SynchSet)
 //follow set : * / \ + - < > = ^ | , ) ] ;
 myType Parser::Factor(vector <Symbol> SynchSet)
 {
-    cout << "Factor \n";
+    /// cout << "Factor \n";
     NameToken *nt;
     bool error;
     TableEntry te;
     Kind tempkind;
     myType temptype;
     int constValue;
+
     switch(laSymbol)
     {
     case NUMERAL:
         constValue =Constant(SynchSet);
+        admin->emit2("CONSTANT",constValue);
         return INT;
         break;
     case KW_TRUE:
         constValue=Constant(SynchSet);
+        admin->emit2("CONSTANT",constValue);
         return BOOL;
         break;
     case KW_FALSE:
         constValue =Constant(SynchSet);
+        admin->emit2("CONSTANT",constValue);
         return BOOL;
         break;
     case ID:
@@ -1600,7 +1614,6 @@ myType Parser::Factor(vector <Symbol> SynchSet)
             temptype = te.type;
             if(tempkind == CONSTANT)
             {
-
                 Constant(SynchSet);
                 admin->emit2("CONSTANT",te.value);
 
@@ -1611,17 +1624,12 @@ myType Parser::Factor(vector <Symbol> SynchSet)
                 admin->emit1("VALUE");
             }
             return temptype;
-//            else
-//            {
-//                admin->error("The id being accessed is undefined.",3);
-//            }
         }
         else
         {
             admin->error("The id being accessed is undefined.",3);
             VariableAccess(SynchSet);
         }
-
         break;
     case SYM_LEFTPAREN:
         match(laSymbol, __func__);
@@ -1643,13 +1651,14 @@ myType Parser::Factor(vector <Symbol> SynchSet)
         Error(__func__, "", SynchSet);
         return UNIVERSAL;
     }
+
 }
 
 //first set : * / \
 //follow set : ( ~ false true number letter
 void Parser::MultiplyingOperator(vector <Symbol> SynchSet)
 {
-    cout << "MultiplyingOperator \n";
+    /// cout << "MultiplyingOperator \n";
 
     switch(laSymbol)
     {
@@ -1658,11 +1667,11 @@ void Parser::MultiplyingOperator(vector <Symbol> SynchSet)
         match(laSymbol, __func__);
         break;
     case SYM_DIVIDE:
-        admin->emit("DIVIDE");
+        admin->emit1("DIVIDE");
         match(laSymbol, __func__);
         break;
     case SYM_MODULO:
-        admin->emit("MODULO");
+        admin->emit1("MODULO");
         match(laSymbol, __func__);
         break;
     default:
@@ -1675,7 +1684,7 @@ void Parser::MultiplyingOperator(vector <Symbol> SynchSet)
 //follow set : * / \ + - < > = ^ | := -> ) ] , ;
 int Parser::IndexedSelector(vector <Symbol> SynchSet)
 {
-    cout << "IndexedSelector \n";
+    /// cout << "IndexedSelector \n";
     myType type;
     switch(laSymbol)
     {
@@ -1707,7 +1716,7 @@ int Parser::IndexedSelector(vector <Symbol> SynchSet)
 //follow set : * / \ + - < > = ^ | , ) ] ;
 int Parser::Constant(vector <Symbol> SynchSet)
 {
-    cout << "Constant\n";
+    /// cout << "Constant\n";
     int constVal = 0;
     switch(laSymbol)
     {
@@ -1733,7 +1742,7 @@ int Parser::Constant(vector <Symbol> SynchSet)
 //follow set : * / \ + - < > = ^ | , ) ] ;
 int Parser::BooleanSymbol(vector <Symbol> SynchSet)
 {
-    cout << "BooleanSymbol \n";
+    /// cout << "BooleanSymbol \n";
 
     switch(laSymbol)
     {
@@ -1747,7 +1756,7 @@ int Parser::BooleanSymbol(vector <Symbol> SynchSet)
         break;
     default:
         Error(__func__, "Expected 'true' or 'false'", SynchSet);
-        return;
+        return 0;
     }
 }
 
@@ -1755,7 +1764,7 @@ int Parser::BooleanSymbol(vector <Symbol> SynchSet)
 //follow set : * / \ + - < > = ^ | , ) ] ;
 int Parser::Numeral(vector <Symbol> SynchSet)
 {
-    cout << "Numeral \n";
+    /// cout << "Numeral \n";
     NumberToken *nt = (NumberToken*) laToken;
     int val = nt->getValue();
     if(laSymbol == NUMERAL)
@@ -1773,7 +1782,7 @@ int Parser::Numeral(vector <Symbol> SynchSet)
 //follow set : * / \ + - < > = ^ | :=  , ) ] ;
 void Parser::VariableName(vector <Symbol> SynchSet)
 {
-    cout << "VariableName \n";
+    /// cout << "VariableName \n";
     if(laSymbol == ID)
     {
         match(laSymbol, __func__);
@@ -1788,7 +1797,7 @@ void Parser::VariableName(vector <Symbol> SynchSet)
 //follow set : * / \ + - < > = ^ | , ) ] = ;
 void Parser::ConstantName(vector <Symbol> SynchSet)
 {
-    cout << "ConstantName \n";
+    /// cout << "ConstantName \n";
     if(laSymbol == ID)
     {
         match(laSymbol, __func__);
@@ -1803,13 +1812,13 @@ void Parser::ConstantName(vector <Symbol> SynchSet)
 //follow set : ; begin
 int Parser::ProcedureName(vector <Symbol> SynchSet)
 {
-    cout << "ProcedureName \n";
+    /// cout << "ProcedureName \n";
     if(laSymbol == ID)
     {
         NameToken *nt = (NameToken*) laToken;
         int position = nt->getPosition();
         match(laSymbol, __func__);
-        cout << position << endl << endl;
+        /// cout << position << endl << endl;
         return position;
     }
     else
@@ -1823,7 +1832,7 @@ int Parser::ProcedureName(vector <Symbol> SynchSet)
 //follow set : * / \ + - < > = ^ | :=  , ) ] ;
 void Parser::Name(vector <Symbol> SynchSet)
 {
-    cout << "Name \n";
+    /// cout << "Name \n";
     if(laSymbol == ID)
     {
         match(laSymbol, __func__);
@@ -1839,7 +1848,7 @@ void Parser::Error(const char funcname[], string errMessage, vector<Symbol> &Syn
 	if(!panic)
 	{
 		panic = true;
-		cout << "\nBegin error recovery.\n";
+		/// cout << "\nBegin error recovery.\n";
 		errorCount++;
 
 		admin->error(errMessage + " : " + laSymbolName() + " in " + funcname, 2);
@@ -1858,15 +1867,15 @@ void Parser::Error(const char funcname[], string errMessage, vector<Symbol> &Syn
 void Parser::match(Symbol sym, const char funcname[])
 {
 
-    cout << "match terminal : " << laSymbolName() << " in " << funcname << endl;
+    /// cout << "match terminal : " << laSymbolName() << " in " << funcname << endl;
 //    --panicCount;
 	if(panic)//panicCount == 0)
     {
-        cout << "Panic recovered.\n\n";
+        /// cout << "Panic recovered.\n\n";
 		panic = false;
     }
 	getNextToken();
-    cout << "Got new token : " << laSymbolName() << endl;
+    /// cout << "Got new token : " << laSymbolName() << endl;
 
 }
 
@@ -1918,10 +1927,24 @@ void Parser::getNextToken()
 	case BAD_SYM:
 	case BAD_ID:
 	case BAD_NUMERAL:
-		cout << "scanner error : " << laSymbolName() << endl;
+		/// cout << "scanner error : " << laSymbolName() << endl;
 		getNextToken();
 	default:
 		break;
 	}
+
+}
+
+int Parser::NewLabel(){
+
+    labelNum++;
+    if(labelNum < MAXLABEL)
+    {
+        return labelNum;
+    }
+    else
+    {
+        admin->error("Too many labels. Fatality.", 1);
+    }
 
 }

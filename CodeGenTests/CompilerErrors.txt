@@ -1,0 +1,11 @@
+$compiler error test
+begin
+integer a,b,c;
+Boolean tr;
+proc p
+begin
+integer x;
+skip;
+end;
+callllll p; $this is an error and will cause the compiler to not output any generated code.
+end.
